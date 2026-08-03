@@ -4,12 +4,13 @@ import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
+import { initMemoryTables, listMemories, listSummaries, addMemory, deleteMemory, clearMemories, deleteMemoriesByChat, embedTexts, retrieveTopMemories, extractAndStore, buildMemorySection } from './memory.js';
 import Database from 'better-sqlite3';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-const DATA_DIR = join(__dirname, 'data');
+const DATA_DIR = process.env.DATA_DIR ? process.env.DATA_DIR : join(__dirname, 'data');
 const CONFIG_FILE = join(DATA_DIR, 'config.json');
 const DB_FILE = join(DATA_DIR, 'database.sqlite');
 
@@ -25,13 +26,14 @@ db.exec(`
         key TEXT PRIMARY KEY,
         value TEXT
     );
-    CREATE TABLE IF NOT EXISTS sessions (
-        id TEXT PRIMARY KEY,
-        name TEXT,
-        updated_at INTEGER,
-        messages TEXT
-    );
-`);
+        CREATE TABLE IF NOT EXISTS sessions (
+            id TEXT PRIMARY KEY,
+            name TEXT,
+            updated_at INTEGER,
+            messages TEXT
+        );
+    `);
+initMemoryTables(db);
 
 
 // ── Encryption Setup ────────────────────────────────────────────────────
@@ -225,7 +227,7 @@ app.get('/api/chats', (req, res) => {
         const rows = db.prepare('SELECT * FROM sessions ORDER BY updated_at DESC').all();
         const sessions = rows.map(r => ({
             id: r.id,
-            name: r.name,
+            title: r.name,
             messages: JSON.parse(r.messages)
         }));
         return res.json(sessions);
@@ -257,7 +259,7 @@ app.post('/api/chats', (req, res) => {
                 if (s.id) {
                     stmt.run(
                         s.id, 
-                        s.name || 'New Chat', 
+                        s.title || s.name || 'New Chat', 
                         Date.now(), 
                         JSON.stringify(s.messages || [])
                     );
@@ -355,6 +357,108 @@ async function executeToolCall(toolName, args) {
     }
     return "Unknown tool";
 }
+
+// ── Memory API ─────────────────────────────────────
+app.get('/api/memories', (req, res) => {
+  try {
+    res.json({ memories: listMemories(db), summaries: listSummaries(db) });
+  } catch (e) {
+    console.error('Error listing memories:', e.message);
+    res.status(500).json({ error: 'Failed to list memories' });
+  }
+});
+
+app.post('/api/memories', async (req, res) => {
+  try {
+    const content = (req.body && typeof req.body.content === 'string' ? req.body.content : '').trim();
+    if (!content) return res.status(400).json({ error: 'content is required' });
+    const serverConfig = getServerConfig();
+    const [vec] = (await embedTexts(serverConfig, [content])) || [];
+    const id = addMemory(db, { content, kind: 'manual', embedding: vec || null });
+    res.json({ status: 'ok', id });
+  } catch (e) {
+    console.error('Error adding memory:', e.message);
+    res.status(500).json({ error: 'Failed to add memory' });
+  }
+});
+
+app.post('/api/memories/remember', async (req, res) => {
+  try {
+    const chatId = req.body && req.body.chatId;
+    const messageIndex = Number(req.body && req.body.messageIndex);
+    const row = db.prepare('SELECT messages FROM sessions WHERE id = ?').get(chatId);
+    if (!row) return res.status(404).json({ error: 'Chat session not found' });
+    const messages = JSON.parse(row.messages);
+    const target = messages[messageIndex];
+    if (!target || target.role !== 'assistant') return res.status(400).json({ error: 'Invalid message index' });
+    const content = typeof target.content === 'string' ? target.content.trim() : '';
+    if (!content) return res.status(400).json({ error: 'Message is empty' });
+    const serverConfig = getServerConfig();
+    const [vec] = (await embedTexts(serverConfig, [content])) || [];
+    const id = addMemory(db, { content, kind: 'manual', source_chat_id: chatId, embedding: vec || null });
+    res.json({ status: 'ok', id });
+  } catch (e) {
+    console.error('Error remembering message:', e.message);
+    res.status(500).json({ error: 'Failed to remember message' });
+  }
+});
+
+app.post('/api/memories/unremember', (req, res) => {
+  try {
+    const chatId = req.body && req.body.chatId;
+    if (!chatId) return res.status(400).json({ error: 'chatId is required' });
+    deleteMemoriesByChat(db, chatId);
+    res.json({ status: 'ok' });
+  } catch (e) {
+    console.error('Error unremembering chat:', e.message);
+    res.status(500).json({ error: 'Failed to unremember chat' });
+  }
+});
+
+app.delete('/api/memories/:id', (req, res) => {
+  try {
+    const ok = deleteMemory(db, req.params.id);
+    res.json({ status: ok ? 'ok' : 'not_found' });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to delete memory' });
+  }
+});
+
+app.delete('/api/memories', (req, res) => {
+  try {
+    clearMemories(db);
+    res.json({ status: 'ok' });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to clear memories' });
+  }
+});
+
+app.post('/api/memories/search', async (req, res) => {
+  try {
+    const query = (req.body && typeof req.body.query === 'string' ? req.body.query : '').trim();
+    if (!query) return res.status(400).json({ error: 'query is required' });
+    const serverConfig = getServerConfig();
+    const results = await retrieveTopMemories(db, serverConfig, query);
+    res.json(results);
+  } catch (e) {
+    console.error('Error searching memories:', e.message);
+    res.status(500).json({ error: 'Failed to search memories' });
+  }
+});
+
+app.post('/api/memories/extract', async (req, res) => {
+  try {
+    const chatId = req.body && req.body.chatId;
+    const row = db.prepare('SELECT messages FROM sessions WHERE id = ?').get(chatId);
+    if (!row) return res.status(404).json({ error: 'Chat session not found' });
+    const serverConfig = getServerConfig();
+    const result = await extractAndStore(db, serverConfig, chatId, JSON.parse(row.messages));
+    res.json({ status: 'ok', extracted: result });
+  } catch (e) {
+    console.error('Error extracting memories:', e.message);
+    res.status(500).json({ error: 'Failed to extract memories' });
+  }
+});
 
 // ── Server-Sent Events (SSE) Helpers ─────────────────────────────────────
 function sseHeaders(res) {
@@ -742,6 +846,10 @@ if (fs.existsSync(distPath)) {
     });
 }
 
-app.listen(PORT, () => {
+if (process.env.START_SERVER !== '0') {
+  app.listen(PORT, () => {
     console.log(`Dashboard server running on port ${PORT}`);
-});
+  });
+}
+
+export { app };
