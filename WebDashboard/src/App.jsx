@@ -1,9 +1,10 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { 
-  Settings, RefreshCw, CheckCircle2, XCircle, Zap, Activity,
-  MessageSquare, LayoutGrid, List, Copy, Send, ExternalLink, Clock, ShieldCheck, Lock, Globe, Search,
-  Plus, Trash2, Download, UserCheck, Link2, Pencil, RotateCcw, Check, Paperclip, Wrench, FileText, X,
-  Mic, MicOff, Volume2, VolumeX, BookOpen, DollarSign, ChevronDown, Image
+  Settings, RefreshCw, CheckCircle2, XCircle, Activity,
+  MessageSquare, LayoutGrid, List, Copy, Send, Clock, ShieldCheck, Globe, Search,
+  Plus, Trash2, Download, Link2, Pencil, RotateCcw, Paperclip, Wrench, FileText, X,
+  Mic, MicOff, Volume2, VolumeX, BookOpen, DollarSign, ChevronDown, Table,
+  Bot, Code, PenLine, Languages, BarChart, Printer, Save, Mail
 } from 'lucide-react';
 import { DeepSeekIcon, OllamaIcon, OllamaPayIcon } from './components/AIIcons';
 import { encryptAndSaveConfig, loadAndDecryptConfig } from './utils/crypto';
@@ -11,13 +12,186 @@ import MarkdownMessage from './components/MarkdownMessage';
 import './index.css';
 
 const PERSONAS = {
-  general: { name: '🤖 ทั่วไป (General Assistant)', prompt: '' },
-  developer: { name: '👨‍💻 Senior Developer', prompt: 'You are an expert Senior Full-Stack Developer. Write clean, efficient, modern code with clear explanations.' },
-  content: { name: '✍️ Content Creator', prompt: 'You are a creative Content Writer and Marketing Copywriter. Craft engaging, clear, and compelling content.' },
-  translator: { name: '🌐 Professional Translator', prompt: 'You are a professional English-Thai translator. Translate text accurately with natural phrasing.' },
-  analyst: { name: '📊 Data Analyst', prompt: 'You are a Data Analyst. Structure key insights using markdown tables and clear bullet points.' },
-  custom: { name: '✏️ กำหนดเอง (Custom)', prompt: '' }
+  general: { name: 'ทั่วไป (General Assistant)', prompt: '', icon: Bot },
+  developer: { name: 'Senior Developer', prompt: 'You are an expert Senior Full-Stack Developer. Write clean, efficient, modern code with clear explanations.', icon: Code },
+  content: { name: 'Content Creator', prompt: 'You are a creative Content Writer and Marketing Copywriter. Craft engaging, clear, and compelling content.', icon: PenLine },
+  translator: { name: 'Professional Translator', prompt: 'You are a professional English-Thai translator. Translate text accurately with natural phrasing.', icon: Languages },
+  analyst: { name: 'Data Analyst', prompt: 'You are a Data Analyst. Structure key insights using markdown tables and clear bullet points.', icon: BarChart },
+  custom: { name: 'กำหนดเอง (Custom)', prompt: '', icon: Pencil }
 };
+
+const TEMPLATE_ICONS = { t1: FileText, t2: Code, t3: Languages, t4: Search, t5: BarChart, t6: Mail };
+
+const EXPORT_FORMATS = [
+  { fmt: 'md', icon: FileText, label: 'Markdown (.md)' },
+  { fmt: 'json', icon: BarChart, label: 'JSON (.json)' },
+  { fmt: 'html', icon: Globe, label: 'HTML (.html)' },
+  { fmt: 'print', icon: Printer, label: 'พิมพ์ / PDF' },
+];
+
+// Shorten large token/count numbers to compact units, e.g. 12345 → "12.3K"
+function formatCompact(n) {
+  const abs = Math.abs(n);
+  if (abs >= 1e6) return (n / 1e6).toFixed(abs >= 1e8 ? 0 : 1).replace(/\.0$/, '') + 'M';
+  if (abs >= 1e3) return (n / 1e3).toFixed(abs >= 1e5 ? 0 : 1).replace(/\.0$/, '') + 'K';
+  return String(n);
+}
+
+// Meta badges (search / scrape / tools / files) shared by saved + streaming messages
+function MetaBadges({ m }) {
+  return (
+    <>
+      {m?.searchResults?.length > 0 && (
+        <div className="meta-badge web">
+          <Globe size={14} />
+          <span>ดึงข้อมูลสดจากเว็บแล้ว ({m.searchResults.length} แหล่งอ้างอิง)</span>
+        </div>
+      )}
+
+      {m?.scrapedContent && (
+        <div className="meta-badge scrape">
+          <Link2 size={14} />
+          <span>อ่านเนื้อหาจากลิงก์: <strong>{m.scrapedContent.title}</strong></span>
+        </div>
+      )}
+
+      {m?.executedTools?.length > 0 && (
+        <div className="meta-badge tool">
+          <Wrench size={14} />
+          <span>เรียกใช้เครื่องมือ: <strong>{m.executedTools.map(t => t.name).join(', ')}</strong></span>
+        </div>
+      )}
+
+      {m?.attachedFiles?.length > 0 && (
+        <div className="meta-badge file">
+          <FileText size={14} />
+          <span>แนบไฟล์: <strong>{m.attachedFiles.map(f => f.name).join(', ')}</strong></span>
+        </div>
+      )}
+    </>
+  );
+}
+
+// Custom dropdown (consistent rendering across all browsers/OS)
+function Dropdown({ value, onChange, options, groups, label }) {
+  const [open, setOpen] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(-1);
+
+  const flatten = () => {
+    if (groups) {
+      return groups.flatMap(g => g.options.map(o => ({ value: o.value, label: o.label, icon: o.icon, group: g.label })));
+    }
+    return options.map(o => ({ ...o, group: null }));
+  };
+  const items = flatten();
+  const current = items.find(i => i.value === value);
+
+  const pick = (item) => {
+    onChange(item.value);
+    setOpen(false);
+    setActiveIndex(-1);
+  };
+
+  const onKeyDown = (e) => {
+    if (!open) {
+      if (e.key === 'Enter' || e.key === ' ' || e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        setOpen(true);
+        setActiveIndex(Math.max(0, items.findIndex(i => i.value === value)));
+      }
+      return;
+    }
+    if (e.key === 'Escape') {
+      setOpen(false);
+      setActiveIndex(-1);
+    } else if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setActiveIndex(a => (a + 1) % items.length);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setActiveIndex(a => (a <= 0 ? items.length - 1 : a - 1));
+    } else if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      if (activeIndex >= 0) pick(items[activeIndex]);
+      else setOpen(false);
+    } else if (e.key === 'Tab') {
+      setOpen(false);
+      setActiveIndex(-1);
+    }
+  };
+
+  return (
+    <div className="custom-select" role="listbox" aria-label={label}>
+      <button
+        type="button"
+        className="custom-select-trigger"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={() => setOpen(o => !o)}
+        onKeyDown={onKeyDown}
+      >
+        <span className="custom-select-value">{current.icon && <span className="custom-select-option-icon">{current.icon}</span>}{current ? current.label : label}</span>
+        <ChevronDown size={14} className={`custom-select-chevron ${open ? 'open' : ''}`} />
+      </button>
+      {open && (
+        <>
+          <div className="dropdown-backdrop" onClick={() => setOpen(false)} />
+          <div className="custom-select-panel" role="listbox" aria-label={label}>
+            {items.map((item, idx) => (
+              <span key={item.value}>
+                {item.group && (idx === 0 || items[idx - 1].group !== item.group) && (
+                  <div className="custom-select-group-label">{item.group}</div>
+                )}
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={item.value === value}
+                  className={`custom-select-item ${item.value === value ? 'selected' : ''} ${activeIndex === idx ? 'highlighted' : ''}`}
+                  onMouseEnter={() => setActiveIndex(idx)}
+                  onClick={() => pick(item)}
+                >
+                  {item.icon && <span className="custom-select-option-icon">{item.icon}</span>}
+                  {item.label}
+                </button>
+              </span>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// Parse an SSE stream into per-event handlers
+async function parseSSEEvents(response, handlers) {
+  if (!response.body) throw new Error('No response body');
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  const processBlock = (block) => {
+    let event = 'message';
+    let data = '';
+    for (const line of block.split('\n')) {
+      if (line.startsWith('event:')) event = line.slice(6).trim();
+      else if (line.startsWith('data:')) data += line.slice(5).trim();
+    }
+    if (!data) return;
+    let json;
+    try { json = JSON.parse(data); } catch (e) { return; }
+    handlers[event]?.(json);
+  };
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const parts = buffer.split('\n\n');
+    buffer = parts.pop();
+    parts.forEach(processBlock);
+  }
+  if (buffer.trim()) processBlock(buffer);
+}
 
 function App() {
   const [keys, setKeys] = useState({
@@ -60,24 +234,30 @@ function App() {
   const handleSaveKeys = async (e) => {
     e.preventDefault();
     // 1. Save to server-side JSON storage (/api/config)
+    let serverSaved = false;
     try {
-      await fetch('/api/config', {
+      const serverRes = await fetch('/api/config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(keys)
       });
+      serverSaved = serverRes.ok;
     } catch (err) {
       console.error('Failed to save config to server:', err);
     }
 
     // 2. Save encrypted backup to client-side localStorage
-    const success = await encryptAndSaveConfig(keys);
+    const localSaved = await encryptAndSaveConfig(keys);
     localStorage.setItem('refresh_interval', refreshInterval);
     setShowSettings(false);
-    if (success) {
-      showToast('Settings saved to Server & encrypted locally!');
+    if (localSaved && serverSaved) {
+      showToast('Settings saved to server & stored locally!');
+    } else if (localSaved) {
+      showToast('Saved locally — server save failed');
+    } else if (serverSaved) {
+      showToast('Settings saved to server');
     } else {
-      showToast('Settings saved to Server!');
+      showToast('Failed to save settings');
     }
     fetchData();
   };
@@ -115,11 +295,12 @@ function App() {
   const [sessions, setSessions] = useState([
     {
       id: 'default-session',
-      title: 'Chat 1',
-      messages: [{ role: 'assistant', content: 'Hello! I am DeepSeek AI equipped with Web Search, Tools, File Attachments, Voice Input, Vision, and Personas. How can I assist you today?' }]
+      title: 'แชท 1',
+      messages: [{ role: 'assistant', content: 'สวัสดีครับ! ผมคือ DeepSeek AI พร้อมใช้งาน Web Search, เครื่องมือ, การแนบไฟล์, Voice Input, Vision และ Personas มีอะไรให้ช่วยได้บ้างครับ?' }]
     }
   ]);
   const [activeSessionId, setActiveSessionId] = useState('default-session');
+  const [chatPane, setChatPane] = useState('chat');
   const [promptInput, setPromptInput] = useState('');
   const [selectedModel, setSelectedModel] = useState('deepseek-chat');
   const [selectedPersona, setSelectedPersona] = useState('general');
@@ -128,8 +309,17 @@ function App() {
   const [useTools, setUseTools] = useState(true);
   const [attachedFiles, setAttachedFiles] = useState([]);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [streamingContent, setStreamingContent] = useState('');
+  const [streamingMeta, setStreamingMeta] = useState(null);
+  const [streamError, setStreamError] = useState('');
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [confirmDeleteSession, setConfirmDeleteSession] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
   const chatEndRef = useRef(null);
   const fileInputRef = useRef(null);
+  const abortRef = useRef(null);
+  const elapsedTimerRef = useRef(null);
+  const lastUserMsgRef = useRef(null);
 
   // Feature 1: Voice Input (STT) & TTS
   const [isListening, setIsListening] = useState(false);
@@ -148,12 +338,12 @@ function App() {
     const saved = localStorage.getItem('prompt_templates');
     if (saved) return JSON.parse(saved);
     return [
-      { id: 't1', name: '📝 สรุปรายงานประชุม', prompt: 'ช่วยสรุปรายงานการประชุมต่อไปนี้ให้กระชับ เน้นประเด็นสำคัญ การตัดสินใจ และ action items:\n\n[วางข้อความรายงานประชุมที่นี่]' },
-      { id: 't2', name: '👨‍💻 Refactor Python Code', prompt: 'ช่วย refactor โค้ด Python ต่อไปนี้ให้เป็น Clean Code ตาม PEP 8 พร้อมอธิบายการเปลี่ยนแปลง:\n\n```python\n[วางโค้ดที่นี่]\n```' },
-      { id: 't3', name: '🌐 แปลเอกสารสัญญา', prompt: 'ช่วยแปลเอกสารต่อไปนี้จากภาษาอังกฤษเป็นภาษาไทย โดยรักษาความหมายทางกฎหมายให้ครบถ้วน:\n\n[วางข้อความที่ต้องการแปล]' },
-      { id: 't4', name: '🔍 Code Review', prompt: 'ช่วย review โค้ดต่อไปนี้ โดยตรวจหา bugs, security issues, performance issues และแนะนำการปรับปรุง:\n\n```\n[วางโค้ดที่นี่]\n```' },
-      { id: 't5', name: '📊 วิเคราะห์ข้อมูล CSV', prompt: 'ช่วยวิเคราะห์ข้อมูลต่อไปนี้ และสรุปผลในรูปแบบตาราง Markdown พร้อม insights สำคัญ:\n\n[วางข้อมูล CSV หรือตารางที่นี่]' },
-      { id: 't6', name: '✉️ ร่างอีเมลทางการ', prompt: 'ช่วยร่างอีเมลทางการภาษาไทยสำหรับ:\nเรื่อง: [ระบุเรื่อง]\nถึง: [ระบุผู้รับ]\nสาระสำคัญ: [ระบุเนื้อหาที่ต้องการสื่อ]' }
+      { id: 't1', name: 'สรุปรายงานประชุม', prompt: 'ช่วยสรุปรายงานการประชุมต่อไปนี้ให้กระชับ เน้นประเด็นสำคัญ การตัดสินใจ และ action items:\n\n[วางข้อความรายงานประชุมที่นี่]' },
+      { id: 't2', name: 'Refactor Python Code', prompt: 'ช่วย refactor โค้ด Python ต่อไปนี้ให้เป็น Clean Code ตาม PEP 8 พร้อมอธิบายการเปลี่ยนแปลง:\n\n```python\n[วางโค้ดที่นี่]\n```' },
+      { id: 't3', name: 'แปลเอกสารสัญญา', prompt: 'ช่วยแปลเอกสารต่อไปนี้จากภาษาอังกฤษเป็นภาษาไทย โดยรักษาความหมายทางกฎหมายให้ครบถ้วน:\n\n[วางข้อความที่ต้องการแปล]' },
+      { id: 't4', name: 'Code Review', prompt: 'ช่วย review โค้ดต่อไปนี้ โดยตรวจหา bugs, security issues, performance issues และแนะนำการปรับปรุง:\n\n```\n[วางโค้ดที่นี่]\n```' },
+      { id: 't5', name: 'วิเคราะห์ข้อมูล CSV', prompt: 'ช่วยวิเคราะห์ข้อมูลต่อไปนี้ และสรุปผลในรูปแบบตาราง Markdown พร้อม insights สำคัญ:\n\n[วางข้อมูล CSV หรือตารางที่นี่]' },
+      { id: 't6', name: 'ร่างอีเมลทางการ', prompt: 'ช่วยร่างอีเมลทางการภาษาไทยสำหรับ:\nเรื่อง: [ระบุเรื่อง]\nถึง: [ระบุผู้รับ]\nสาระสำคัญ: [ระบุเนื้อหาที่ต้องการสื่อ]' }
     ];
   });
   const [newTemplateName, setNewTemplateName] = useState('');
@@ -315,19 +505,29 @@ function App() {
     const newId = 'session-' + Date.now();
     const newSess = {
       id: newId,
-      title: `Chat ${sessions.length + 1}`,
-      messages: [{ role: 'assistant', content: 'Hello! How can I help you in this new session?' }]
+      title: `แชท ${sessions.length + 1}`,
+      messages: [{ role: 'assistant', content: 'สวัสดีครับ! มีอะไรให้ช่วยในบทสนทนาใหม่นี้ไหม?' }]
     };
     const updated = [newSess, ...sessions];
     saveSessions(updated);
     setActiveSessionId(newId);
+    setChatPane('chat');
   };
 
-  const deleteCurrentSession = () => {
-    if (sessions.length <= 1) return;
+  const requestDeleteCurrentSession = () => {
+    if (sessions.length <= 1) {
+      showToast('ไม่สามารถลบบทสนทนาสุดท้ายได้');
+      return;
+    }
+    setConfirmDeleteSession(true);
+  };
+
+  const confirmDeleteSessionNow = () => {
     const updated = sessions.filter(s => s.id !== activeSessionId);
     saveSessions(updated);
     setActiveSessionId(updated[0].id);
+    setConfirmDeleteSession(false);
+    showToast('ลบบทสนทนาแล้ว');
   };
 
   const handleFileUpload = (e) => {
@@ -545,17 +745,31 @@ function App() {
     handleEditUserMessage(targetIdx);
   };
 
-  const exportCurrentChat = () => {
-    const markdownContent = messages
-      .map(m => `### ${m.role === 'user' ? '👤 User' : '🤖 Assistant'}\n${m.content}\n`)
-      .join('\n---\n\n');
-    const blob = new Blob([markdownContent], { type: 'text/markdown;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `${currentSession.title.replace(/\s+/g, '_')}_chat_export.md`;
-    link.click();
-    showToast('Exported chat to Markdown!');
+  const appendAssistantMessage = (assistantMsg) => {
+    setSessions(prev => {
+      const next = prev.map(s =>
+        s.id === activeSessionId ? { ...s, messages: [...s.messages, assistantMsg] } : s
+      );
+      localStorage.setItem('ai_chat_sessions', JSON.stringify(next));
+      fetch('/api/chats', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(next)
+      }).catch(() => {});
+      return next;
+    });
+  };
+
+  const stopGenerating = () => {
+    abortRef.current?.abort();
+  };
+
+  const retryLastMessage = () => {
+    const last = lastUserMsgRef.current;
+    if (!last) return;
+    setPromptInput(last.text);
+    setAttachedFiles(last.files || []);
+    setStreamError('');
   };
 
   const sendChatMessage = async (e) => {
@@ -571,17 +785,17 @@ function App() {
 
     const userText = promptInput;
     const currentAttachedFiles = [...attachedFiles];
-    const userMsgObj = { 
-      role: 'user', 
-      content: userText, 
-      attachedFiles: currentAttachedFiles.length > 0 ? currentAttachedFiles : null 
+    lastUserMsgRef.current = { text: userText, files: currentAttachedFiles };
+    const userMsgObj = {
+      role: 'user',
+      content: userText,
+      attachedFiles: currentAttachedFiles.length > 0 ? currentAttachedFiles : null
     };
-    const updatedMessages = [...messages, userMsgObj];
-    
+
     // Update local state immediately via functional update
     setSessions(prevSessions => {
-      const next = prevSessions.map(s => 
-        s.id === activeSessionId ? { ...s, messages: updatedMessages, title: s.messages.length <= 1 ? (userText ? userText.substring(0, 20) : 'File Upload') : s.title } : s
+      const next = prevSessions.map(s =>
+        s.id === activeSessionId ? { ...s, messages: [...s.messages, userMsgObj], title: s.messages.length <= 1 ? (userText ? userText.substring(0, 20) : 'แนบไฟล์') : s.title } : s
       );
       localStorage.setItem('ai_chat_sessions', JSON.stringify(next));
       return next;
@@ -589,58 +803,86 @@ function App() {
 
     setPromptInput('');
     setAttachedFiles([]);
+    setStreamingContent('');
+    setStreamingMeta(null);
+    setStreamError('');
     setIsGenerating(true);
+    setElapsedSeconds(0);
+    elapsedTimerRef.current = setInterval(() => setElapsedSeconds(s => s + 1), 1000);
 
-    const activePersonaPrompt = selectedPersona === 'custom' 
-      ? customPersonaPrompt 
+    const activePersonaPrompt = selectedPersona === 'custom'
+      ? customPersonaPrompt
       : PERSONAS[selectedPersona]?.prompt || '';
 
-    try {
-      const endpoint = isOllamaModel ? '/api/ollama/chat' : '/api/deepseek/chat';
-      const authHeader = isOllamaModel ? `Bearer ${keys.ollama}` : `Bearer ${keys.deepseek}`;
+    const endpoint = isOllamaModel ? '/api/ollama/chat' : '/api/deepseek/chat';
+    const authHeader = isOllamaModel ? `Bearer ${keys.ollama}` : `Bearer ${keys.deepseek}`;
+    const controller = new AbortController();
+    abortRef.current = controller;
 
+    try {
       const res = await fetch(endpoint, {
         method: 'POST',
-        headers: { 
+        headers: {
           'Authorization': authHeader,
           'Content-Type': 'application/json'
         },
+        signal: controller.signal,
         body: JSON.stringify({
           model: isOllamaModel ? selectedModel.replace('ollama:', '') : selectedModel,
           webSearch: enableWebSearch,
           useTools: useTools,
           personaPrompt: activePersonaPrompt,
           attachedFiles: currentAttachedFiles,
-          messages: updatedMessages.map(m => ({ role: m.role, content: m.content }))
+          messages: [...messages, userMsgObj].map(m => ({ role: m.role, content: m.content }))
         })
       });
 
-      if (res.ok) {
-        const json = await res.json();
-        const reply = json.choices?.[0]?.message?.content || json.message?.content || 'No response from model.';
-        const finalMsgs = [...updatedMessages, { 
-          role: 'assistant', 
-          content: reply, 
-          searchResults: json.searchResults || null,
-          scrapedContent: json.scrapedContent || null,
-          executedTools: json.executedTools || null,
-          tokenUsage: json.tokenUsage || null,
-          estimatedCostUSD: json.estimatedCostUSD || null
-        }];
-
-        saveSessions(sessions.map(s => s.id === activeSessionId ? { ...s, messages: finalMsgs } : s));
-        fetchData(); // Refresh balance after chat
-      } else {
+      if (!res.ok) {
         const errJson = await res.json().catch(() => ({}));
-        const errMsg = errJson.error || '⚠️ Error communicating with AI API.';
-        const errMsgs = [...updatedMessages, { role: 'assistant', content: `⚠️ ${errMsg}` }];
-        saveSessions(sessions.map(s => s.id === activeSessionId ? { ...s, messages: errMsgs } : s));
+        throw new Error(errJson.error || 'เกิดข้อผิดพลาดในการติดต่อ AI API');
       }
-    } catch {
-      const netErrMsgs = [...updatedMessages, { role: 'assistant', content: '⚠️ Network request failed.' }];
-      saveSessions(sessions.map(s => s.id === activeSessionId ? { ...s, messages: netErrMsgs } : s));
+
+      await parseSSEEvents(res, {
+        meta: (m) => {
+          setStreamingMeta(prev => ({
+            ...(prev || {}),
+            searchResults: m.searchResults || prev?.searchResults || null,
+            scrapedContent: m.scrapedContent || prev?.scrapedContent || null,
+            executedTools: prev?.executedTools
+              ? [...prev.executedTools, ...(m.executedTools || [])]
+              : (m.executedTools || null)
+          }));
+        },
+        delta: (m) => setStreamingContent(c => c + (m.content || '')),
+        done: (m) => {
+          const assistantMsg = {
+            role: 'assistant',
+            content: m.content || '',
+            searchResults: m.searchResults || null,
+            scrapedContent: m.scrapedContent || null,
+            executedTools: m.executedTools || null,
+            tokenUsage: m.tokenUsage || null,
+            estimatedCostUSD: m.estimatedCostUSD || null
+          };
+          appendAssistantMessage(assistantMsg);
+          fetchData();
+        },
+        error: (m) => setStreamError(m.error || 'เกิดข้อผิดพลาดในการติดต่อ AI API'),
+        aborted: () => {}
+      });
+    } catch (err) {
+      if (err.name === 'AbortError') {
+        showToast('ยกเลิกการสร้างคำตอบแล้ว');
+      } else {
+        console.error('Chat error:', err);
+        setStreamError(err.message || 'ไม่สามารถติดต่อเซิร์ฟเวอร์ได้');
+      }
     } finally {
       setIsGenerating(false);
+      clearInterval(elapsedTimerRef.current);
+      elapsedTimerRef.current = null;
+      setElapsedSeconds(0);
+      abortRef.current = null;
     }
   };
 
@@ -654,7 +896,7 @@ function App() {
 💳 Ollama Pay: Remaining ${data.ollamaPay.tokensRemaining.toLocaleString()} tokens | Today: ${data.ollamaPay.todayTokens.toLocaleString()}
     `.trim();
     navigator.clipboard.writeText(summary);
-    showToast('คัดลอกสรุปโควต้าแล้ว!');
+    showToast('Summary copied to clipboard!');
   };
 
   useEffect(() => {
@@ -667,12 +909,12 @@ function App() {
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  }, [messages, streamingContent, streamError, isGenerating]);
 
   const activeServicesCount = [data.deepseek.available, data.ollama.available, data.ollamaPay.available].filter(Boolean).length;
 
   return (
-    <div className="container">
+    <div className={`container ${activeTab === 'chat' ? 'chat-active' : ''}`}>
       {/* Header */}
       <header>
         <div className="brand-title">
@@ -683,11 +925,11 @@ function App() {
         <div className="header-actions">
           <div className="latency-tag" style={{ padding: '0.4rem 0.75rem', borderRadius: '10px' }}>
             <Clock size={14} />
-            <span>อัปเดตเมื่อ {lastRefreshed.toLocaleTimeString('th-TH', { timeZone: 'Asia/Bangkok' })} น.</span>
+            <span>Last updated {lastRefreshed.toLocaleTimeString('en-US', { timeZone: 'Asia/Bangkok' })}</span>
           </div>
 
           <button className="secondary" onClick={() => copyStatsToClipboard()} title="Copy Markdown Summary">
-            <Copy size={18} /> Export
+            <Copy size={18} /> <span className="btn-label">Export</span>
           </button>
 
           <button className="secondary" onClick={() => fetchData()} title="Refresh Data">
@@ -695,7 +937,7 @@ function App() {
           </button>
 
           <button className="primary" onClick={() => setShowSettings(true)}>
-            <Settings size={18} /> Settings
+            <Settings size={18} /> <span className="btn-label">Settings</span>
           </button>
         </div>
       </header>
@@ -706,19 +948,19 @@ function App() {
           className={`tab-button ${activeTab === 'overview' ? 'active' : ''}`}
           onClick={() => setActiveTab('overview')}
         >
-          <LayoutGrid size={18} /> Overview Cards
+          <LayoutGrid size={18} /> Overview
         </button>
         <button 
           className={`tab-button ${activeTab === 'chat' ? 'active' : ''}`}
           onClick={() => setActiveTab('chat')}
         >
-          <MessageSquare size={18} /> DeepSeek AI Playground
+          <MessageSquare size={18} /> Chat
         </button>
         <button 
           className={`tab-button ${activeTab === 'details' ? 'active' : ''}`}
           onClick={() => setActiveTab('details')}
         >
-          <List size={18} /> Detailed Metrics
+          <List size={18} /> Details
         </button>
       </div>
 
@@ -760,7 +1002,7 @@ function App() {
           </div>
           <div>
             <div className="summary-label">Ollama Pay Today</div>
-            <div className="summary-value">{data.ollamaPay.todayTokens.toLocaleString()} tokens</div>
+            <div className="summary-value">{formatCompact(data.ollamaPay.todayTokens)} tokens</div>
           </div>
         </div>
       </div>
@@ -829,7 +1071,7 @@ function App() {
               <div className="progress-track">
                 <div 
                   className={`progress-fill ${data.ollama.sessionPercent > 85 ? 'amber' : 'indigo'}`} 
-                  style={{ width: `${Math.min(data.ollama.sessionPercent, 100)}%` }} 
+                  style={{ transform: `scaleX(${Math.min(data.ollama.sessionPercent, 100) / 100})` }} 
                 />
               </div>
             </div>
@@ -840,19 +1082,7 @@ function App() {
                 <span>{data.ollama.weeklyPercent.toFixed(1)}%</span>
               </div>
               <div className="progress-track">
-                <div className="progress-fill emerald" style={{ width: `${Math.min(data.ollama.weeklyPercent, 100)}%` }} />
-              </div>
-            </div>
-
-            <div className="sub-grid">
-              <div className="sub-stat-box">
-                <div className="sub-stat-label">Current Cost</div>
-                <div className="sub-stat-value">{data.ollama.cost}</div>
-              </div>
-              <div className="sub-stat-box" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <a href="https://ollama.com/settings" target="_blank" rel="noreferrer" style={{ color: '#38bdf8', textDecoration: 'none', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-                  Manage Ollama <ExternalLink size={14} />
-                </a>
+                <div className="progress-fill emerald" style={{ transform: `scaleX(${Math.min(data.ollama.weeklyPercent, 100) / 100})` }} />
               </div>
             </div>
           </div>
@@ -876,7 +1106,7 @@ function App() {
             <div className="metric-row">
               <div>
                 <div className="stat-label">Tokens Remaining</div>
-                <div className="metric-value-huge">{data.ollamaPay.tokensRemaining.toLocaleString()}</div>
+                <div className="metric-value-huge">{formatCompact(data.ollamaPay.tokensRemaining)}</div>
               </div>
             </div>
 
@@ -889,7 +1119,7 @@ function App() {
               </div>
               <div className="progress-track">
                 <div className="progress-fill amber" style={{ 
-                  width: `${data.ollamaPay.totalTokens ? (data.ollamaPay.tokensRemaining / data.ollamaPay.totalTokens) * 100 : 0}%` 
+                  transform: `scaleX(${data.ollamaPay.totalTokens ? (data.ollamaPay.tokensRemaining / data.ollamaPay.totalTokens) : 0})` 
                 }} />
               </div>
             </div>
@@ -897,11 +1127,11 @@ function App() {
             <div className="sub-grid">
               <div className="sub-stat-box">
                 <div className="sub-stat-label">Today Tokens</div>
-                <div className="sub-stat-value">{data.ollamaPay.todayTokens.toLocaleString()}</div>
+                <div className="sub-stat-value">{formatCompact(data.ollamaPay.todayTokens)}</div>
               </div>
               <div className="sub-stat-box">
                 <div className="sub-stat-label">Month Tokens</div>
-                <div className="sub-stat-value">{data.ollamaPay.monthTokens.toLocaleString()}</div>
+                <div className="sub-stat-value">{formatCompact(data.ollamaPay.monthTokens)}</div>
               </div>
             </div>
           </div>
@@ -910,168 +1140,182 @@ function App() {
 
       {/* TAB 2: AI CHAT PLAYGROUND */}
       {activeTab === 'chat' && (
-        <div className="chat-widget">
+        <div className={`chat-widget ${chatPane === 'history' ? 'pane-history' : 'pane-chat'}`}>
+          <div className="chat-sub-tabs" role="tablist" aria-label="มุมมองแชท">
+            <button type="button" role="tab" aria-selected={chatPane === 'history'} className={`chat-sub-tab ${chatPane === 'history' ? 'active' : ''}`} onClick={() => setChatPane('history')}>
+              ประวัติ
+            </button>
+            <button type="button" role="tab" aria-selected={chatPane === 'chat'} className={`chat-sub-tab ${chatPane === 'chat' ? 'active' : ''}`} onClick={() => setChatPane('chat')}>
+              แชท
+            </button>
+          </div>
           <div className="chat-body-layout">
             {/* Left Sidebar (Sessions List) */}
             <div className="chat-sidebar">
               <div className="chat-sidebar-header">
-                <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-tertiary)' }}>Conversations</span>
-                <button type="button" onClick={createNewSession} className="secondary" style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem' }} title="Create New Chat">
-                  <Plus size={14} /> New
+                <span className="chat-sidebar-title">บทสนทนา</span>
+                <button type="button" onClick={createNewSession} className="secondary" style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem' }} title="สร้างบทสนทนาใหม่">
+                  <Plus size={14} /> ใหม่
                 </button>
               </div>
               {/* Feature 3: Sidebar Search */}
-              <div style={{ position: 'relative', margin: '0.4rem 0' }}>
-                <Search size={13} style={{ position: 'absolute', left: '0.5rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />
+              <div className="chat-sidebar-search">
+                <Search size={13} className="chat-sidebar-search-icon" />
                 <input
                   type="text"
                   placeholder="ค้นหาบทสนทนา..."
                   value={sidebarSearch}
                   onChange={e => setSidebarSearch(e.target.value)}
-                  style={{ width: '100%', padding: '0.35rem 0.5rem 0.35rem 1.75rem', fontSize: '0.75rem', background: '#0d1117', borderRadius: '8px', border: '1px solid #21262d', color: 'var(--text-primary)', boxSizing: 'border-box' }}
+                  className="chat-sidebar-search-input"
                 />
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', overflowY: 'auto', flex: 1 }}>
+              <div className="chat-session-list">
                 {sessions.filter(s => !sidebarSearch.trim() || s.title.toLowerCase().includes(sidebarSearch.toLowerCase()) || s.messages.some(m => m.content.toLowerCase().includes(sidebarSearch.toLowerCase()))).map(s => (
-                  <div 
-                    key={s.id} 
+                  <div
+                    key={s.id}
+                    role="button"
+                    tabIndex={0}
                     className={`chat-session-item ${s.id === activeSessionId ? 'active' : ''}`}
-                    onClick={() => setActiveSessionId(s.id)}
+                    onClick={() => { if (!isGenerating) { setActiveSessionId(s.id); setChatPane('chat'); } }}
+                    onKeyDown={e => {
+                      if (!isGenerating && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); setActiveSessionId(s.id); setChatPane('chat'); }
+                    }}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', overflow: 'hidden' }}>
                       <MessageSquare size={14} />
                       <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.title}</span>
                     </div>
                     {sessions.length > 1 && s.id === activeSessionId && (
-                      <Trash2 size={13} style={{ color: '#f85149', cursor: 'pointer' }} onClick={(e) => { e.stopPropagation(); deleteCurrentSession(); }} title="Delete Chat" />
+                      <button
+                        type="button"
+                        className="session-delete-btn"
+                        onClick={(e) => { e.stopPropagation(); requestDeleteCurrentSession(); }}
+                        title="ลบบทสนทนานี้"
+                        aria-label="ลบบทสนทนานี้"
+                      >
+                        <Trash2 size={13} />
+                      </button>
                     )}
                   </div>
                 ))}
               </div>
+              {sidebarSearch && sessions.filter(s => s.title.toLowerCase().includes(sidebarSearch.toLowerCase()) || s.messages.some(m => m.content.toLowerCase().includes(sidebarSearch.toLowerCase()))).length === 0 && (
+                <div style={{ fontSize: '0.78rem', color: 'var(--text-tertiary)', textAlign: 'center', padding: '1rem 0.5rem' }}>
+                  ไม่พบบทสนทนาที่ค้นหา
+                </div>
+              )}
             </div>
 
             {/* Main Chat Area */}
             <div className="chat-main-area">
               {/* Header Toolbar */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.75rem' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+              <div className="chat-header-bar">
+                <div className="chat-header-title-row">
                   <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '1.1rem' }}>
                     <MessageSquare size={20} style={{ color: '#38bdf8' }} /> {currentSession.title}
                   </h3>
                     {/* Feature 5: Multi-format Export */}
                   <div style={{ position: 'relative', display: 'inline-block' }} className="export-dropdown-wrapper">
                     <button type="button" className="secondary" style={{ padding: '0.3rem 0.65rem', fontSize: '0.78rem', display: 'flex', alignItems: 'center', gap: '0.3rem' }}
-                      onClick={e => { e.currentTarget.nextSibling.style.display = e.currentTarget.nextSibling.style.display === 'block' ? 'none' : 'block'; }}
+                      onClick={() => setExportOpen(o => !o)}
+                      aria-expanded={exportOpen}
+                      aria-haspopup="menu"
                     >
-                      <Download size={14} /> Export <ChevronDown size={12} />
+                      <Download size={14} /> ส่งออก <ChevronDown size={12} />
                     </button>
-                    <div style={{ display: 'none', position: 'absolute', top: '110%', left: 0, zIndex: 999, background: '#1c2128', border: '1px solid #30363d', borderRadius: '10px', minWidth: '160px', boxShadow: '0 8px 32px rgba(0,0,0,0.5)', padding: '0.4rem' }}>
-                      {[['md','📄 Markdown (.md)'],['json','📊 JSON (.json)'],['html','🌐 HTML (.html)'],['print','🖨️ Print / PDF']].map(([fmt, label]) => (
-                        <button key={fmt} type="button" onClick={() => { exportAs(fmt); document.querySelectorAll('.export-dropdown-wrapper div').forEach(d => d.style.display='none'); }} style={{ display: 'block', width: '100%', textAlign: 'left', background: 'none', border: 'none', color: 'var(--text-primary)', padding: '0.45rem 0.75rem', cursor: 'pointer', fontSize: '0.8rem', borderRadius: '7px' }}
-                          onMouseEnter={e=>e.currentTarget.style.background='#21262d'} onMouseLeave={e=>e.currentTarget.style.background='none'}
-                        >{label}</button>
-                      ))}
-                    </div>
+                    {exportOpen && (
+                      <>
+                        <div className="dropdown-backdrop" onClick={() => setExportOpen(false)} />
+                        <div role="menu" className="export-dropdown" onClick={() => setExportOpen(false)}>
+                          {EXPORT_FORMATS.map(({ fmt, icon: Icon, label }) => (
+                            <button key={fmt} type="button" role="menuitem" className="export-dropdown-item" onClick={() => exportAs(fmt)}>
+                              <span className="custom-select-option-icon"><Icon size={13} /></span>{label}
+                            </button>
+                          ))}
+                        </div>
+                      </>
+                    )}
                   </div>
                 </div>
 
                 {/* Controls & Model Selector */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
-                  <select 
-                    value={selectedPersona} 
-                    onChange={e => setSelectedPersona(e.target.value)}
-                    style={{ width: 'auto', padding: '0.35rem 0.75rem', fontSize: '0.8rem', background: '#1c2128' }}
-                  >
-                    {Object.entries(PERSONAS).map(([key, p]) => (
-                      <option key={key} value={key}>{p.name}</option>
-                    ))}
-                  </select>
+                <div className="chat-toolbar">
+                  <div className="toolbar-group">
+                    <span className="toolbar-group-label">บุคลิก</span>
+                    <Dropdown
+                      label="บุคลิก"
+                      value={selectedPersona}
+                      onChange={setSelectedPersona}
+                      options={Object.entries(PERSONAS).map(([key, p]) => ({ value: key, label: p.name, icon: <p.icon size={14} /> }))}
+                    />
+                  </div>
 
-                  <button 
-                    type="button"
-                    onClick={() => setUseTools(!useTools)}
-                    style={{ 
-                      display: 'flex', 
-                      alignItems: 'center', 
-                      gap: '0.35rem', 
-                      padding: '0.35rem 0.75rem', 
-                      borderRadius: '8px',
-                      cursor: 'pointer',
-                      fontSize: '0.8rem',
-                      fontWeight: 600,
-                      background: useTools ? 'rgba(251, 191, 36, 0.15)' : 'rgba(255, 255, 255, 0.05)', 
-                      border: `1px solid ${useTools ? 'rgba(251, 191, 36, 0.4)' : 'var(--panel-border)'}`, 
-                      color: useTools ? '#fbbf24' : 'var(--text-tertiary)' 
-                    }}
-                    title="Toggle Function Calling / AI Tools"
-                  >
-                    <Wrench size={14} />
-                    <span>Tools: <strong>{useTools ? 'ON' : 'OFF'}</strong></span>
-                  </button>
+                  <div className="toolbar-group">
+                    <span className="toolbar-group-label">ความสามารถ</span>
+                    <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                      <button
+                        type="button"
+                        onClick={() => setUseTools(!useTools)}
+                        className={`toggle-chip ${useTools ? 'on amber' : 'off'}`}
+                        title="เปิด/ปิดการเรียกใช้เครื่องมือ (Function Calling)"
+                      >
+                        <Wrench size={14} />
+                        <span>เครื่องมือ: <strong>{useTools ? 'เปิด' : 'ปิด'}</strong></span>
+                      </button>
 
-                  <button 
-                    type="button"
-                    onClick={() => setEnableWebSearch(!enableWebSearch)}
-                    style={{ 
-                      display: 'flex', 
-                      alignItems: 'center', 
-                      gap: '0.35rem', 
-                      padding: '0.35rem 0.75rem', 
-                      borderRadius: '8px',
-                      cursor: 'pointer',
-                      fontSize: '0.8rem',
-                      fontWeight: 600,
-                      background: enableWebSearch ? 'rgba(56, 189, 248, 0.15)' : 'rgba(255, 255, 255, 0.05)', 
-                      border: `1px solid ${enableWebSearch ? 'rgba(56, 189, 248, 0.4)' : 'var(--panel-border)'}`, 
-                      color: enableWebSearch ? '#38bdf8' : 'var(--text-tertiary)' 
-                    }}
-                    title="Toggle Web Search for live up-to-date responses"
-                  >
-                    <Globe size={14} />
-                    <span>Web Search: <strong>{enableWebSearch ? 'ON' : 'OFF'}</strong></span>
-                  </button>
+                      <button
+                        type="button"
+                        onClick={() => setEnableWebSearch(!enableWebSearch)}
+                        className={`toggle-chip ${enableWebSearch ? 'on cyan' : 'off'}`}
+                        title="เปิด/ปิดการค้นหาเว็บเพื่อข้อมูลล่าสุด"
+                      >
+                        <Globe size={14} />
+                        <span>ค้นหาเว็บ: <strong>{enableWebSearch ? 'เปิด' : 'ปิด'}</strong></span>
+                      </button>
+                    </div>
+                  </div>
 
-                  <select 
-                    value={selectedModel} 
-                    onChange={e => setSelectedModel(e.target.value)}
-                    style={{ width: 'auto', padding: '0.35rem 0.85rem', fontSize: '0.8rem' }}
-                  >
-                    <optgroup label="DeepSeek API">
-                      <option value="deepseek-chat">deepseek-chat</option>
-                      <option value="deepseek-coder">deepseek-coder</option>
-                    </optgroup>
-                    <optgroup label="Ollama Cloud / Local">
-                      <option value="ollama:llama3">ollama: llama3</option>
-                      <option value="ollama:qwen2.5">ollama: qwen2.5</option>
-                      <option value="ollama:mistral">ollama: mistral</option>
-                    </optgroup>
-                  </select>
+                  <div className="toolbar-group">
+                    <span className="toolbar-group-label">โมเดล</span>
+                    <Dropdown
+                      label="โมเดล"
+                      value={selectedModel}
+                      onChange={setSelectedModel}
+                      groups={[
+                        { label: 'DeepSeek API', options: [
+                          { value: 'deepseek-chat', label: 'deepseek-chat' },
+                          { value: 'deepseek-coder', label: 'deepseek-coder' },
+                        ] },
+                        { label: 'Ollama Cloud / Local', options: [
+                          { value: 'ollama:llama3', label: 'ollama: llama3' },
+                          { value: 'ollama:qwen2.5', label: 'ollama: qwen2.5' },
+                          { value: 'ollama:mistral', label: 'ollama: mistral' },
+                        ] },
+                      ]}
+                    />
+                  </div>
 
                   {/* Feature 4: Templates Button */}
-                  <button
-                    type="button"
-                    onClick={() => setShowTemplates(true)}
-                    style={{
-                      display: 'flex', alignItems: 'center', gap: '0.35rem',
-                      padding: '0.35rem 0.75rem', borderRadius: '8px', cursor: 'pointer',
-                      fontSize: '0.8rem', fontWeight: 600,
-                      background: 'rgba(167, 139, 250, 0.12)',
-                      border: '1px solid rgba(167, 139, 250, 0.35)',
-                      color: '#a78bfa'
-                    }}
-                    title="Prompt Templates Library"
-                  >
-                    <BookOpen size={14} /> Templates
-                  </button>
+                  <div className="toolbar-group">
+                    <span className="toolbar-group-label">คลัง</span>
+                    <button
+                      type="button"
+                      onClick={() => setShowTemplates(true)}
+                      className="templates-btn"
+                      title="คลังเทมเพลต Prompt"
+                    >
+                      <BookOpen size={14} /> เทมเพลต
+                    </button>
+                  </div>
                 </div>
               </div>
 
               {/* Custom Persona Text Input (if selected) */}
               {selectedPersona === 'custom' && (
                 <div style={{ marginBottom: '0.75rem' }}>
-                  <input 
-                    type="text" 
-                    placeholder="Enter custom System Prompt / Persona instructions..."
+                  <input
+                    type="text"
+                    placeholder="กรอก System Prompt / คำสั่ง Persona ที่กำหนดเอง..."
                     value={customPersonaPrompt}
                     onChange={e => setCustomPersonaPrompt(e.target.value)}
                     style={{ width: '100%', padding: '0.45rem 0.75rem', fontSize: '0.825rem' }}
@@ -1084,82 +1328,7 @@ function App() {
                 {messages.map((m, idx) => (
                   <div key={idx} className={`message-wrapper ${m.role}`}>
                     <div className={`message-bubble ${m.role}`}>
-                      {/* Search Badge */}
-                      {m.searchResults && m.searchResults.length > 0 && (
-                        <div style={{
-                          fontSize: '0.78rem',
-                          color: '#38bdf8',
-                          background: 'rgba(56, 189, 248, 0.1)',
-                          border: '1px solid rgba(56, 189, 248, 0.25)',
-                          padding: '0.35rem 0.65rem',
-                          borderRadius: '6px',
-                          marginBottom: '0.6rem',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '0.4rem'
-                        }}>
-                          <Globe size={14} />
-                          <span>ดึงข้อมูลสดจากเว็บแล้ว ({m.searchResults.length} แหล่งอ้างอิง)</span>
-                        </div>
-                      )}
-
-                      {/* Scraped URL Content Badge */}
-                      {m.scrapedContent && (
-                        <div style={{
-                          fontSize: '0.78rem',
-                          color: '#3fb950',
-                          background: 'rgba(63, 185, 80, 0.1)',
-                          border: '1px solid rgba(63, 185, 80, 0.25)',
-                          padding: '0.35rem 0.65rem',
-                          borderRadius: '6px',
-                          marginBottom: '0.6rem',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '0.4rem'
-                        }}>
-                          <Link2 size={14} />
-                          <span>อ่านเนื้อหาจากลิงก์: <strong>{m.scrapedContent.title}</strong></span>
-                        </div>
-                      )}
-
-                      {/* Executed Tools Badge */}
-                      {m.executedTools && m.executedTools.length > 0 && (
-                        <div style={{
-                          fontSize: '0.78rem',
-                          color: '#fbbf24',
-                          background: 'rgba(251, 191, 36, 0.1)',
-                          border: '1px solid rgba(251, 191, 36, 0.25)',
-                          padding: '0.35rem 0.65rem',
-                          borderRadius: '6px',
-                          marginBottom: '0.6rem',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '0.4rem'
-                        }}>
-                          <Wrench size={14} />
-                          <span>เรียกใช้เครื่องมือ: <strong>{m.executedTools.map(t => t.name).join(', ')}</strong></span>
-                        </div>
-                      )}
-
-                      {/* Attached Files Badge */}
-                      {m.attachedFiles && m.attachedFiles.length > 0 && (
-                        <div style={{
-                          fontSize: '0.78rem',
-                          color: '#a78bfa',
-                          background: 'rgba(167, 139, 250, 0.1)',
-                          border: '1px solid rgba(167, 139, 250, 0.25)',
-                          padding: '0.35rem 0.65rem',
-                          borderRadius: '6px',
-                          marginBottom: '0.6rem',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '0.4rem'
-                        }}>
-                          <FileText size={14} />
-                          <span>แนบไฟล์: <strong>{m.attachedFiles.map(f => f.name).join(', ')}</strong></span>
-                        </div>
-                      )}
-
+                      <MetaBadges m={m} />
                       {/* Message Content with Markdown & Code Highlighting */}
                       {m.role === 'user' ? (
                         <div style={{ whiteSpace: 'pre-wrap' }}>{m.content}</div>
@@ -1184,7 +1353,7 @@ function App() {
                             type="button"
                             onClick={() => handleUndoLastMessage(idx)}
                             className="action-icon-btn"
-                            title="Undo — ลบข้อความนี้และคำตอบออก แล้วนำกลับมาแก้ใหม่"
+                            title="ย้อนกลับ — ลบข้อความนี้และคำตอบออก แล้วนำกลับมาแก้ใหม่"
                           >
                             <RotateCcw size={13} />
                           </button>
@@ -1213,21 +1382,66 @@ function App() {
                     </div>
                     {/* Feature 2: Token usage badge below assistant messages */}
                     {m.role === 'assistant' && m.tokenUsage && (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.25rem', fontSize: '0.72rem', color: 'var(--text-muted)', paddingLeft: '0.25rem' }}>
-                        <DollarSign size={11} style={{ color: '#34d399' }} />
-                        <span style={{ color: '#34d399' }}>${m.estimatedCostUSD}</span>
+                      <div className="token-usage-line">
+                        <DollarSign size={11} className="token-cost-icon" />
+                        <span className="token-cost">${m.estimatedCostUSD}</span>
                         <span>·</span>
-                        <span>↑ {m.tokenUsage.prompt_tokens?.toLocaleString()} in</span>
-                        <span>↓ {m.tokenUsage.completion_tokens?.toLocaleString()} out</span>
-                        <span>· total {m.tokenUsage.total_tokens?.toLocaleString()} tokens</span>
+                        <span>↑ {m.tokenUsage.prompt_tokens?.toLocaleString()} เข้า</span>
+                        <span>↓ {m.tokenUsage.completion_tokens?.toLocaleString()} ออก</span>
+                        <span>· รวม {m.tokenUsage.total_tokens?.toLocaleString()} โทเคน</span>
                       </div>
                     )}
                   </div>
                 ))}
 
+                {/* Transient error bubble (not persisted) */}
+                {streamError && (
+                  <div className="message-wrapper assistant">
+                    <div className="message-bubble error">
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <XCircle size={16} />
+                        <span>{streamError}</span>
+                      </div>
+                    </div>
+                    <div className="message-actions-outside">
+                      <button type="button" className="action-icon-btn" onClick={retryLastMessage} title="ลองส่งคำถามนี้อีกครั้ง">
+                        <RotateCcw size={13} /> ลองอีกครั้ง
+                      </button>
+                      <button type="button" className="action-icon-btn" onClick={() => setStreamError('')} title="ปิดข้อความแจ้งเตือน">
+                        <X size={13} /> ปิด
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Streaming / loading bubble */}
                 {isGenerating && (
-                  <div className="message-bubble assistant">
-                    <div className="loading" /> {enableWebSearch ? 'กำลังค้นหาเว็บ อ่านลิงก์ และสรุปคำตอบ...' : 'Generating response...'}
+                  <div className="message-wrapper assistant">
+                    <div className="message-bubble assistant">
+                      <MetaBadges m={streamingMeta} />
+                      {streamingContent ? (
+                        <MarkdownMessage content={streamingContent} />
+                      ) : (
+                        <div className="chat-typing-indicator">
+                          <span className="typing-dot" />
+                          <span className="typing-dot" />
+                          <span className="typing-dot" />
+                          <span className="typing-status">
+                            {streamingMeta?.searchResults?.length
+                              ? 'กำลังอ่านลิงก์และสรุปคำตอบ...'
+                              : (streamingMeta ? 'กำลังวิเคราะห์และสร้างคำตอบ...' : 'กำลังค้นหาข้อมูล...')}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                    <div className="message-actions-outside">
+                      <span className="generation-elapsed">
+                        <Clock size={11} /> {elapsedSeconds} วินาที
+                      </span>
+                      <button type="button" className="action-icon-btn stop-btn" onClick={stopGenerating} title="หยุดสร้างคำตอบ">
+                        <X size={13} /> หยุด
+                      </button>
+                    </div>
                   </div>
                 )}
                 <div ref={chatEndRef} />
@@ -1236,10 +1450,10 @@ function App() {
               {/* Quick Prompt Pills */}
               {messages.length <= 1 && (
                 <div className="prompt-pills-container">
-                  <button type="button" className="prompt-pill" onClick={() => setPromptInput('ช่วยสรุปข่าวสารและเหตุการณ์สำคัญประจำวันนี้ให้ฟังหน่อย')}>🌐 ข่าวอัปเดตวันนี้</button>
-                  <button type="button" className="prompt-pill" onClick={() => setPromptInput('ช่วยตรวจเช็กและแนะนำการ refactor โค้ดส่วนนี้ให้เป็น Clean Code')}>👨‍💻 ตรวจสอบโค้ด</button>
-                  <button type="button" className="prompt-pill" onClick={() => setPromptInput('ช่วยวิเคราะห์ข้อมูลต่อไปนี้และจัดรูปแบบให้อยู่ในตาราง Markdown')}>📊 สรุปตารางข้อมูล</button>
-                  <button type="button" className="prompt-pill" onClick={() => setPromptInput('ช่วยร่างอีเมลสื่อสารการทำงานที่เป็นมืออาชีพ')}>✍️ ร่างอีเมลการทำงาน</button>
+                  <button type="button" className="prompt-pill" onClick={() => setPromptInput('ช่วยสรุปข่าวสารและเหตุการณ์สำคัญประจำวันนี้ให้ฟังหน่อย')}><Globe size={13} /> ข่าวอัปเดตวันนี้</button>
+                  <button type="button" className="prompt-pill" onClick={() => setPromptInput('ช่วยตรวจเช็กและแนะนำการ refactor โค้ดส่วนนี้ให้เป็น Clean Code')}><Code size={13} /> ตรวจสอบโค้ด</button>
+                  <button type="button" className="prompt-pill" onClick={() => setPromptInput('ช่วยวิเคราะห์ข้อมูลต่อไปนี้และจัดรูปแบบให้อยู่ในตาราง Markdown')}><BarChart size={13} /> สรุปตารางข้อมูล</button>
+                  <button type="button" className="prompt-pill" onClick={() => setPromptInput('ช่วยร่างอีเมลสื่อสารการทำงานที่เป็นมืออาชีพ')}><PenLine size={13} /> ร่างอีเมลการทำงาน</button>
                 </div>
               )}
 
@@ -1322,10 +1536,9 @@ function App() {
       )}
       {/* Feature 4: Prompt Templates Modal */}
       {showTemplates && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 2000, background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}
-          onClick={e => { if (e.target === e.currentTarget) setShowTemplates(false); }}
+        <div className="templates-overlay" onClick={e => { if (e.target === e.currentTarget) setShowTemplates(false); }}
         >
-          <div style={{ background: '#161b22', border: '1px solid #30363d', borderRadius: '18px', padding: '1.75rem', maxWidth: '680px', width: '100%', maxHeight: '85vh', overflowY: 'auto', boxShadow: '0 24px 64px rgba(0,0,0,0.7)' }}>
+          <div className="templates-card">
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem' }}>
               <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#a78bfa' }}>
                 <BookOpen size={20} /> Prompt Templates Library
@@ -1340,7 +1553,10 @@ function App() {
                   onMouseEnter={e => e.currentTarget.style.borderColor = '#a78bfa'}
                   onMouseLeave={e => e.currentTarget.style.borderColor = '#30363d'}
                 >
-                  <div style={{ fontWeight: 600, fontSize: '0.85rem', marginBottom: '0.4rem', color: '#e6edf3' }}>{t.name}</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 600, fontSize: '0.85rem', marginBottom: '0.4rem', color: '#e6edf3' }}>
+                    {(() => { const TI = TEMPLATE_ICONS[t.id] || FileText; return <TI size={14} style={{ color: '#a78bfa', flexShrink: 0 }} />; })()}
+                    <span>{t.name}</span>
+                  </div>
                   <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', marginBottom: '0.75rem', lineHeight: 1.4 }}>{t.prompt.substring(0, 120)}...</div>
                   <div style={{ display: 'flex', gap: '0.5rem' }}>
                     <button type="button" onClick={() => { setPromptInput(t.prompt); setShowTemplates(false); showToast('Template โหลดแล้ว'); }}
@@ -1358,13 +1574,13 @@ function App() {
               ))}
             </div>
             <div style={{ borderTop: '1px solid #30363d', paddingTop: '1.25rem' }}>
-              <div style={{ fontSize: '0.85rem', fontWeight: 600, marginBottom: '0.75rem', color: 'var(--text-secondary)' }}>➕ บันทึก Template ใหม่</div>
+              <div style={{ fontSize: '0.85rem', fontWeight: 600, marginBottom: '0.75rem', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}><Plus size={14} /> บันทึก Template ใหม่</div>
               <input type="text" placeholder="ชื่อ Template..." value={newTemplateName} onChange={e => setNewTemplateName(e.target.value)}
                 style={{ width: '100%', marginBottom: '0.6rem', padding: '0.55rem 0.75rem', background: '#0d1117', border: '1px solid #21262d', borderRadius: '8px', color: 'var(--text-primary)', fontSize: '0.85rem', boxSizing: 'border-box' }} />
               <textarea rows={3} placeholder="เนื้อหา Prompt..." value={newTemplatePrompt} onChange={e => setNewTemplatePrompt(e.target.value)}
                 style={{ width: '100%', marginBottom: '0.75rem', padding: '0.55rem 0.75rem', background: '#0d1117', border: '1px solid #21262d', borderRadius: '8px', color: 'var(--text-primary)', fontSize: '0.85rem', resize: 'vertical', boxSizing: 'border-box' }} />
-              <button type="button" onClick={saveTemplate} className="primary" style={{ width: '100%' }}>
-                💾 บันทึก Template
+              <button type="button" onClick={saveTemplate} className="primary" style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem' }}>
+                <Save size={14} /> บันทึก Template
               </button>
             </div>
           </div>
@@ -1373,67 +1589,65 @@ function App() {
 
       {/* TAB 3: DETAILED METRICS TABLE */}
       {activeTab === 'details' && (
-        <div className="glass-card" style={{ overflowX: 'auto' }}>
-          <h3 style={{ marginTop: 0, marginBottom: '1.5rem' }}>Comprehensive Service Quota Breakdown</h3>
-          <table style={{ width: '100%', textAlign: 'left', borderCollapse: 'collapse' }}>
+        <div className="glass-card details-card">
+          <h3 className="details-title">
+            <Table size={15} /> Comprehensive Service Quota Breakdown
+          </h3>
+          <table className="details-table">
             <thead>
-              <tr style={{ borderBottom: '1px solid var(--glass-border)', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-                <th style={{ padding: '0.75rem' }}>Service</th>
-                <th style={{ padding: '0.75rem' }}>Metric / Metric Name</th>
-                <th style={{ padding: '0.75rem' }}>Current Value</th>
-                <th style={{ padding: '0.75rem' }}>Latency</th>
-                <th style={{ padding: '0.75rem' }}>Status</th>
+              <tr>
+                <th>Service</th>
+                <th>Metric / Metric Name</th>
+                <th>Current Value</th>
+                <th>Latency</th>
+                <th>Status</th>
               </tr>
             </thead>
             <tbody>
-              <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                <td style={{ padding: '0.75rem', fontWeight: 'bold' }}>DeepSeek API</td>
-                <td style={{ padding: '0.75rem' }}>Total Balance</td>
-                <td style={{ padding: '0.75rem' }}>${data.deepseek.balance} {data.deepseek.currency}</td>
-                <td style={{ padding: '0.75rem' }}>{data.deepseek.latencyMs} ms</td>
-                <td style={{ padding: '0.75rem' }}>{data.deepseek.available ? 'OK' : 'Error'}</td>
+              <tr>
+                <td className="details-service" rowSpan={2}>DeepSeek API</td>
+                <td className="details-metric">Total Balance</td>
+                <td className="details-value">${data.deepseek.balance} {data.deepseek.currency}</td>
+                <td className="details-latency">{data.deepseek.latencyMs} ms</td>
+                <td>{data.deepseek.available ? <span className="badge success">OK</span> : <span className="badge error">Error</span>}</td>
               </tr>
-              <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                <td style={{ padding: '0.75rem', fontWeight: 'bold' }}>DeepSeek API</td>
-                <td style={{ padding: '0.75rem' }}>Estimated Spent Today</td>
-                <td style={{ padding: '0.75rem' }}>${data.deepseek.spentToday}</td>
-                <td style={{ padding: '0.75rem' }}>--</td>
-                <td style={{ padding: '0.75rem' }}>OK</td>
+              <tr>
+                <td className="details-metric">Estimated Spent Today</td>
+                <td className="details-value">${data.deepseek.spentToday}</td>
+                <td className="details-latency">--</td>
+                <td><span className="badge success">OK</span></td>
               </tr>
-              <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                <td style={{ padding: '0.75rem', fontWeight: 'bold' }}>Ollama Cloud</td>
-                <td style={{ padding: '0.75rem' }}>Session Quota Used</td>
-                <td style={{ padding: '0.75rem' }}>{data.ollama.sessionPercent.toFixed(2)}%</td>
-                <td style={{ padding: '0.75rem' }}>{data.ollama.latencyMs} ms</td>
-                <td style={{ padding: '0.75rem' }}>{data.ollama.available ? 'OK' : 'Error'}</td>
+              <tr>
+                <td className="details-service" rowSpan={2}>Ollama Cloud</td>
+                <td className="details-metric">Session Quota Used</td>
+                <td className="details-value">{data.ollama.sessionPercent.toFixed(2)}%</td>
+                <td className="details-latency">{data.ollama.latencyMs} ms</td>
+                <td>{data.ollama.available ? <span className="badge success">OK</span> : <span className="badge error">Error</span>}</td>
               </tr>
-              <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                <td style={{ padding: '0.75rem', fontWeight: 'bold' }}>Ollama Cloud</td>
-                <td style={{ padding: '0.75rem' }}>Weekly Usage</td>
-                <td style={{ padding: '0.75rem' }}>{data.ollama.weeklyPercent.toFixed(2)}%</td>
-                <td style={{ padding: '0.75rem' }}>--</td>
-                <td style={{ padding: '0.75rem' }}>OK</td>
+              <tr>
+                <td className="details-metric">Weekly Usage</td>
+                <td className="details-value">{data.ollama.weeklyPercent.toFixed(2)}%</td>
+                <td className="details-latency">--</td>
+                <td><span className="badge success">OK</span></td>
               </tr>
-              <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                <td style={{ padding: '0.75rem', fontWeight: 'bold' }}>Ollama Pay</td>
-                <td style={{ padding: '0.75rem' }}>Tokens Remaining</td>
-                <td style={{ padding: '0.75rem' }}>{data.ollamaPay.tokensRemaining.toLocaleString()}</td>
-                <td style={{ padding: '0.75rem' }}>{data.ollamaPay.latencyMs} ms</td>
-                <td style={{ padding: '0.75rem' }}>{data.ollamaPay.available ? 'OK' : 'Error'}</td>
+              <tr>
+                <td className="details-service" rowSpan={3}>Ollama Pay</td>
+                <td className="details-metric">Tokens Remaining</td>
+                <td className="details-value">{formatCompact(data.ollamaPay.tokensRemaining)}</td>
+                <td className="details-latency">{data.ollamaPay.latencyMs} ms</td>
+                <td>{data.ollamaPay.available ? <span className="badge success">OK</span> : <span className="badge error">Error</span>}</td>
               </tr>
-              <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                <td style={{ padding: '0.75rem', fontWeight: 'bold' }}>Ollama Pay</td>
-                <td style={{ padding: '0.75rem' }}>Today Requests / Month Requests</td>
-                <td style={{ padding: '0.75rem' }}>{data.ollamaPay.todayRequests} / {data.ollamaPay.monthRequests}</td>
-                <td style={{ padding: '0.75rem' }}>--</td>
-                <td style={{ padding: '0.75rem' }}>OK</td>
+              <tr>
+                <td className="details-metric">Today / Month Requests</td>
+                <td className="details-value">{data.ollamaPay.todayRequests} / {data.ollamaPay.monthRequests}</td>
+                <td className="details-latency">--</td>
+                <td><span className="badge success">OK</span></td>
               </tr>
-              <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                <td style={{ padding: '0.75rem', fontWeight: 'bold' }}>Ollama Pay</td>
-                <td style={{ padding: '0.75rem' }}>Today PloyJoy Tokens</td>
-                <td style={{ padding: '0.75rem' }}>{data.ollamaPay.todayPloyJoyTokens.toLocaleString()}</td>
-                <td style={{ padding: '0.75rem' }}>--</td>
-                <td style={{ padding: '0.75rem' }}>OK</td>
+              <tr>
+                <td className="details-metric">Today PloyJoy Tokens</td>
+                <td className="details-value">{formatCompact(data.ollamaPay.todayPloyJoyTokens)}</td>
+                <td className="details-latency">--</td>
+                <td><span className="badge success">OK</span></td>
               </tr>
             </tbody>
           </table>
@@ -1445,7 +1659,7 @@ function App() {
         <div className="modal-overlay">
           <div className="modal-card">
             <h2 style={{ marginTop: 0, marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <Settings size={22} style={{ color: '#2f81f7' }} /> ตั้งค่าระบบแดชบอร์ด
+              <Settings size={22} style={{ color: '#2f81f7' }} /> Dashboard Settings
             </h2>
 
             <div style={{ 
@@ -1461,7 +1675,7 @@ function App() {
               color: '#3fb950' 
             }}>
               <ShieldCheck size={16} />
-              <span>บันทึก API Keys ปลอดภัยเป็นไฟล์ JSON บน Server และซิงค์กับ LocalStorage</span>
+              <span>API Keys are saved securely to a JSON file on the server and synced with LocalStorage</span>
             </div>
 
             <form onSubmit={handleSaveKeys}>
@@ -1496,28 +1710,52 @@ function App() {
               </div>
 
               <div className="form-group">
-                <label>รอบเวลาอัปเดตอัตโนมัติ (Refresh Interval)</label>
-                <select 
-                  value={refreshInterval} 
-                  onChange={e => setRefreshInterval(Number(e.target.value))}
-                >
-                  <option value={15}>ทุกๆ 15 วินาที</option>
-                  <option value={30}>ทุกๆ 30 วินาที</option>
-                  <option value={60}>ทุกๆ 1 นาที (แนะนำ)</option>
-                  <option value={300}>ทุกๆ 5 นาที</option>
-                  <option value={0}>อัปเดตด้วยตนเองเท่านั้น</option>
-                </select>
+                <label>Auto Refresh Interval</label>
+                <Dropdown
+                  label="Auto Refresh Interval"
+                  value={refreshInterval}
+                  onChange={v => setRefreshInterval(Number(v))}
+                  options={[
+                    { value: 15, label: 'Every 15 seconds' },
+                    { value: 30, label: 'Every 30 seconds' },
+                    { value: 60, label: 'Every 1 minute (Recommended)' },
+                    { value: 300, label: 'Every 5 minutes' },
+                    { value: 0, label: 'Manual refresh only' },
+                  ]}
+                />
               </div>
 
               <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end', marginTop: '2rem' }}>
                 <button type="button" className="secondary" onClick={() => setShowSettings(false)}>
-                  ยกเลิก
+                  Cancel
                 </button>
                 <button type="submit" className="primary">
-                  บันทึกการตั้งค่า
+                  Save Settings
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Confirm Delete Session */}
+      {confirmDeleteSession && (
+        <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) setConfirmDeleteSession(false); }}>
+          <div className="modal-card" style={{ maxWidth: 'min(420px, 100%)', padding: 'clamp(1.1rem, 3vw, 1.5rem)' }}>
+            <h3 style={{ marginTop: 0, display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#f85149' }}>
+              <Trash2 size={18} /> ลบบทสนทนานี้?
+            </h3>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', lineHeight: 1.5, marginBottom: '1.25rem' }}>
+              บทสนทนา “{currentSession.title}” และข้อความทั้งหมดจะถูกลบออกถาวร ข้อมูลนี้ไม่สามารถกู้คืนได้
+            </p>
+            <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+              <button type="button" className="secondary" onClick={() => setConfirmDeleteSession(false)}>
+                ยกเลิก
+              </button>
+              <button type="button" className="primary" style={{ background: '#da3633' }} onClick={confirmDeleteSessionNow}>
+                <Trash2 size={14} /> ลบถาวร
+              </button>
+            </div>
           </div>
         </div>
       )}
