@@ -4,17 +4,34 @@ import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
+import Database from 'better-sqlite3';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 const DATA_DIR = join(__dirname, 'data');
 const CONFIG_FILE = join(DATA_DIR, 'config.json');
+const DB_FILE = join(DATA_DIR, 'database.sqlite');
 
 // Ensure data directory exists
 if (!fs.existsSync(DATA_DIR)) {
     fs.mkdirSync(DATA_DIR, { recursive: true });
 }
+
+// Initialize SQLite database
+const db = new Database(DB_FILE);
+db.exec(`
+    CREATE TABLE IF NOT EXISTS config_store (
+        key TEXT PRIMARY KEY,
+        value TEXT
+    );
+    CREATE TABLE IF NOT EXISTS sessions (
+        id TEXT PRIMARY KEY,
+        name TEXT,
+        updated_at INTEGER,
+        messages TEXT
+    );
+`);
 
 
 // ── Encryption Setup ────────────────────────────────────────────────────
@@ -56,18 +73,29 @@ function decryptConfig(raw) {
 // Helper to read and decrypt server-side config
 function getServerConfig() {
     try {
+        // 1. Try to fetch from SQLite first
+        const row = db.prepare('SELECT value FROM config_store WHERE key = ?').get('app_config');
+        if (row && row.value) {
+            return decryptConfig(row.value);
+        }
+
+        // 2. Fallback to file for migration (if DB has no config yet)
         if (fs.existsSync(CONFIG_FILE)) {
             const raw = fs.readFileSync(CONFIG_FILE, 'utf8').trim();
             const config = decryptConfig(raw);
-            // Auto-migrate plaintext → encrypted on next save
-            if (!raw.startsWith(ENC_PREFIX)) {
-                saveServerConfig(config);
-                console.log('[config] Migrated plaintext config.json → AES-256-GCM encrypted.');
-            }
+            
+            // Auto-migrate to DB
+            saveServerConfig(config);
+            console.log('[config] Migrated config from config.json to SQLite database.');
+            
+            try {
+                fs.renameSync(CONFIG_FILE, CONFIG_FILE + '.bak');
+            } catch (e) {}
+
             return config;
         }
     } catch (e) {
-        console.error('Error reading/decrypting config.json:', e.message);
+        console.error('Error reading/decrypting config:', e.message);
     }
     return { deepseek: '', ollama: '', ollamaPay: '' };
 }
@@ -76,10 +104,10 @@ function getServerConfig() {
 function saveServerConfig(config) {
     try {
         const encrypted = encryptConfig(config);
-        fs.writeFileSync(CONFIG_FILE, encrypted, 'utf8');
+        db.prepare('INSERT OR REPLACE INTO config_store (key, value) VALUES (?, ?)').run('app_config', encrypted);
         return true;
     } catch (e) {
-        console.error('Error encrypting/writing config.json:', e.message);
+        console.error('Error encrypting/writing config:', e.message);
         return false;
     }
 }
@@ -156,7 +184,7 @@ async function performWebSearch(query) {
     }
 }
 
-const CHATS_FILE = join(DATA_DIR, 'chats.json');
+
 
 // Helper to extract readable text content from a web URL
 async function fetchWebContent(targetUrl) {
@@ -194,23 +222,53 @@ async function fetchWebContent(targetUrl) {
 // Get Chat Sessions History Endpoint
 app.get('/api/chats', (req, res) => {
     try {
-        if (fs.existsSync(CHATS_FILE)) {
-            const raw = fs.readFileSync(CHATS_FILE, 'utf8');
-            return res.json(JSON.parse(raw));
-        }
+        const rows = db.prepare('SELECT * FROM sessions ORDER BY updated_at DESC').all();
+        const sessions = rows.map(r => ({
+            id: r.id,
+            name: r.name,
+            messages: JSON.parse(r.messages)
+        }));
+        return res.json(sessions);
     } catch (e) {
-        console.error('Error reading chats.json:', e);
+        console.error('Error reading sessions from DB:', e);
+        res.json([]);
     }
-    res.json([]);
 });
 
 // Save Chat Sessions History Endpoint
 app.post('/api/chats', (req, res) => {
     try {
-        fs.writeFileSync(CHATS_FILE, JSON.stringify(req.body, null, 2), 'utf8');
+        const sessions = Array.isArray(req.body) ? req.body : [];
+        
+        const updateSessions = db.transaction((sessionsData) => {
+            const currentIds = sessionsData.map(s => s.id).filter(id => typeof id === 'string');
+            
+            // Delete sessions not in the current payload (to handle deletions from UI)
+            if (currentIds.length > 0) {
+                const placeholders = currentIds.map(() => '?').join(',');
+                db.prepare(`DELETE FROM sessions WHERE id NOT IN (${placeholders})`).run(...currentIds);
+            } else {
+                db.prepare('DELETE FROM sessions').run();
+            }
+
+            // Insert or Replace current sessions
+            const stmt = db.prepare('INSERT OR REPLACE INTO sessions (id, name, updated_at, messages) VALUES (?, ?, ?, ?)');
+            for (const s of sessionsData) {
+                if (s.id) {
+                    stmt.run(
+                        s.id, 
+                        s.name || 'New Chat', 
+                        Date.now(), 
+                        JSON.stringify(s.messages || [])
+                    );
+                }
+            }
+        });
+
+        updateSessions(sessions);
         res.json({ status: 'ok' });
     } catch (e) {
-        console.error('Error saving chats.json:', e);
+        console.error('Error saving sessions to DB:', e);
         res.status(500).json({ error: 'Failed to save chats' });
     }
 });
