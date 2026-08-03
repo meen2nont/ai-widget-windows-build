@@ -83,3 +83,62 @@ test('GET /api/memories/search returns array even with no keys', async () => {
   assert.strictEqual(res.status, 200);
   assert.ok(Array.isArray(await res.json()));
 });
+
+test('deepseek chat injects MEMORY section into upstream request when useMemory', async () => {
+  const originalFetch = global.fetch;
+  const chatBodies = [];
+  try {
+    await fetch(`${base}/api/config`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ollama: 'test-ollama-key', deepseek: '', ollamaPay: '' })
+    });
+
+    global.fetch = async (url, opts = {}) => {
+      const u = String(url);
+      if (u.startsWith(base)) return originalFetch(u, opts);
+      if (u.includes('/api/embed')) {
+        return { ok: true, json: async () => ({ embeddings: [[0.1, 0.2, 0.3]] }) };
+      }
+      chatBodies.push(JSON.parse(opts.body || '{}'));
+      const sse = 'data: ' + JSON.stringify({ choices: [{ delta: { content: 'hello' } }] }) + '\n\ndata: [DONE]\n\n';
+      return {
+        ok: true,
+        body: new ReadableStream({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode(sse));
+            controller.close();
+          }
+        })
+      };
+    };
+
+    await fetch(`${base}/api/memories`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content: 'ชื่อสมชาย' })
+    });
+
+    const res = await fetch(`${base}/api/deepseek/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer test-deepseek-key' },
+      body: JSON.stringify({
+        model: 'deepseek-chat',
+        useMemory: true,
+        sessionId: 'x',
+        messages: [{ role: 'user', content: 'คุณชื่ออะไร' }]
+      })
+    });
+    const sseText = await res.text();
+    assert.ok(sseText.includes('event: done'), 'expected streamed done event');
+    assert.ok(chatBodies.length > 0, 'expected an upstream DeepSeek chat call');
+    const hasMemorySection = chatBodies.some(body =>
+      Array.isArray(body.messages) && body.messages.some(m =>
+        m.role === 'system' && typeof m.content === 'string' && m.content.includes('--- MEMORY')
+      )
+    );
+    assert.ok(hasMemorySection, 'expected --- MEMORY --- in the upstream system prompt');
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
