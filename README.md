@@ -12,12 +12,15 @@ AI Widget Dashboard เป็นแอปพลิเคชันยูทิล
 - **ปรับแต่งการแสดงผลได้**: เลือกได้ว่าจะให้แสดงไอคอนของบริการไหน (เช่น ไอคอน DeepSeek พร้อมยอดเงิน, ไอคอน Ollama พร้อมเปอร์เซ็นต์) เป็นหลักบน Menu Bar
 - **อัปเดตอัตโนมัติ**: ตั้งเวลา Refresh ข้อมูลอัตโนมัติ (เช่น ทุกๆ 5 นาที) พร้อมรองรับการเปิดตอนเปิดเครื่อง (Launch at Login)
 
+- **Web Dashboard (Docker)**: เว็บแดชบอร์ดสไตล์พรีเมียม (Vite + React) สำหรับรันผ่าน Docker ดูโควต้าผ่านเบราว์เซอร์ พร้อมฟีเจอร์ AI Playground คุยกับ DeepSeek ได้ในตัว
+
 ## 📁 โครงสร้างโปรเจกต์
 
-โปรเจกต์นี้แบ่งแอปพลิเคชันออกเป็น 2 แพลตฟอร์มหลัก:
+โปรเจกต์นี้แบ่งแอปพลิเคชันออกเป็น 3 ส่วนหลัก:
 
 - **`/NativeApp`**: แอปพลิเคชันสำหรับ macOS พัฒนาด้วย Swift (ใช้ SwiftUI ร่วมกับ AppKit)
 - **`/WindowsApp`**: แอปพลิเคชันสำหรับ Windows พัฒนาด้วย C# และ WPF (ใช้ Hardcodet.NotifyIcon.Wpf สำหรับ System Tray)
+- **`/WebDashboard`**: เว็บแดชบอร์ดสำหรับดูโควต้าและทดลอง AI พัฒนาด้วย React (Vite) + Express Proxy (Node.js) และ containerized ด้วย Docker (Port 9000)
 
 ## 🚀 การติดตั้งและการเปิดใช้งาน
 
@@ -48,6 +51,18 @@ AI Widget Dashboard เป็นแอปพลิเคชันยูทิล
 2. ติดตั้ง NuGet Packages ที่จำเป็น (ถ้ามี)
 3. กด Start Debugging (`F5`)
 4. แอปจะรันและแสดงไอคอนอยู่ใน System Tray บริเวณมุมขวาล่างของ Taskbar
+
+### 🐳 สำหรับ Web Dashboard (Docker)
+1. เข้าไปที่โฟลเดอร์ `WebDashboard`:
+   ```bash
+   cd WebDashboard
+   ```
+2. Build และ Run ผ่าน Docker:
+   ```bash
+   docker build -t ai-widget-dashboard .
+   docker run -d --name ai-widget-dashboard --restart unless-stopped -p 9000:9000 ai-widget-dashboard
+   ```
+3. เปิดเบราว์เซอร์ไปที่ `http://localhost:9000` (หรือ IP ของ Server) แล้วไปที่ **Settings** เพื่อใส่ API Keys
 
 ## ⚙️ การตั้งค่าการใช้งาน (Settings)
 ภายในแอปคุณสามารถตั้งค่าต่างๆ ได้ดังนี้:

@@ -12,12 +12,15 @@ AI Widget Dashboard is a utility application for tracking and managing API balan
 - **Customizable Display**: Choose which service icon to prioritize on your menu bar (e.g., DeepSeek icon with balance, Ollama icon with percentage).
 - **Auto-Refresh**: Configurable data refresh intervals (e.g., every 5 minutes) and supports Launch at Login.
 
+- **Web Dashboard (Docker)**: Premium web dashboard (Vite + React) running via Docker to monitor quotas in any browser, featuring an in-app DeepSeek AI Playground.
+
 ## 📁 Project Structure
 
-The project is divided into two main platforms:
+The project is divided into three main components:
 
 - **`/NativeApp`**: The macOS application built with Swift (using SwiftUI and AppKit).
 - **`/WindowsApp`**: The Windows application built with C# and WPF (using Hardcodet.NotifyIcon.Wpf for System Tray support).
+- **`/WebDashboard`**: The web dashboard built with React (Vite) + Express Proxy (Node.js) and containerized with Docker (Port 9000).
 
 ## 🚀 Installation & Usage
 
@@ -48,6 +51,18 @@ The repository includes an `antigravity_status.10s.py` script for users who pref
 2. Install any necessary NuGet Packages.
 3. Start Debugging (`F5`).
 4. The app will run and show its icon in the System Tray (bottom right of the Taskbar).
+
+### 🐳 For Web Dashboard (Docker)
+1. Navigate to the `WebDashboard` directory:
+   ```bash
+   cd WebDashboard
+   ```
+2. Build and run via Docker:
+   ```bash
+   docker build -t ai-widget-dashboard .
+   docker run -d --name ai-widget-dashboard --restart unless-stopped -p 9000:9000 ai-widget-dashboard
+   ```
+3. Open your browser at `http://localhost:9000` (or server IP) and configure your API Keys in **Settings**.
 
 ## ⚙️ Settings
 You can configure the following within the app:
