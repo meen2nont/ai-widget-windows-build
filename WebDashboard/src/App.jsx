@@ -1689,9 +1689,15 @@ function App() {
                         <DollarSign size={11} className="token-cost-icon" />
                         <span className="token-cost">${m.estimatedCostUSD}</span>
                         <span>·</span>
-                        <span>↑ {m.tokenUsage.prompt_tokens?.toLocaleString()} เข้า</span>
-                        <span>↓ {m.tokenUsage.completion_tokens?.toLocaleString()} ออก</span>
-                        <span>· รวม {m.tokenUsage.total_tokens?.toLocaleString()} โทเคน</span>
+                        <span title={`${m.tokenUsage.prompt_tokens?.toLocaleString()} prompt tokens`}>
+                          ↑ {formatCompact(m.tokenUsage.prompt_tokens)} in
+                        </span>
+                        <span title={`${m.tokenUsage.completion_tokens?.toLocaleString()} completion tokens`}>
+                          ↓ {formatCompact(m.tokenUsage.completion_tokens)} out
+                        </span>
+                        <span title={`${m.tokenUsage.total_tokens?.toLocaleString()} total tokens`}>
+                          · total {formatCompact(m.tokenUsage.total_tokens)} tokens
+                        </span>
                       </div>
                     )}
                   </div>
