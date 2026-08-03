@@ -8,6 +8,7 @@
     "dev": "vite",
     "build": "vite build --emptyOutDir",
     "lint": "oxlint",
+    "test": "node --test test/",
     "preview": "vite preview"
   },
   "dependencies": {
