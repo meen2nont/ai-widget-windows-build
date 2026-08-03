@@ -1225,10 +1225,28 @@ git add WebDashboard/src/App.jsx
 git commit -m "feat: chat memory toggle, request payload, and per-message remember action"
 ```
 
+- [ ] **Step 8: Wire the "อย่าจำ" action** (spec §9.2 per-message control; added as a follow-up `dcd2571`)
+
+After the "จำไว้" button block above, add a second assistant-only button that calls the existing `unrememberChat()` handler (POSTs `{ chatId: activeSessionId }` → `POST /api/memories/unremember`, deleting all memories with that `source_chat_id`). Uses the `Trash2` icon, `action-icon-btn` class, title "อย่าจำ — ลบความจำทั้งหมดของแชทนี้".
+
+```jsx
+{m.role === 'assistant' && (
+  <button
+    type="button"
+    onClick={() => unrememberChat()}
+    className="action-icon-btn"
+    title="อย่าจำ — ลบความจำทั้งหมดของแชทนี้"
+  >
+    <Trash2 size={13} />
+  </button>
+)}
+```
+
+Commit: `feat: wire อย่าจำ (unremember chat) button into assistant message actions`
+
 ---
 
 ### Task 6: Frontend — Memory panel in Settings + embedModel config
-
 **Files:**
 - Modify: `WebDashboard/src/App.jsx`
 
