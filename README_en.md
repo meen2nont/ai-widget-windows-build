@@ -57,12 +57,12 @@ The repository includes an `antigravity_status.10s.py` script for users who pref
    ```bash
    cd WebDashboard
    ```
-2. Build and run via Docker:
+2. Build and run via Docker (with mounted persistent volume for server-side `config.json` storage):
    ```bash
    docker build -t ai-widget-dashboard .
-   docker run -d --name ai-widget-dashboard --restart unless-stopped -p 9000:9000 ai-widget-dashboard
+   docker run -d --name ai-widget-dashboard -v $(pwd)/data:/app/data --restart unless-stopped -p 9000:9000 ai-widget-dashboard
    ```
-3. Open your browser at `http://localhost:9000` (or server IP) and configure your API Keys in **Settings**.
+3. Open your browser at `http://localhost:9000` (or server IP) and configure your API Keys in **Settings**. The keys are saved on the server as JSON so all connected devices share the same dashboard settings automatically without needing to re-enter keys on every device.
 
 ## ⚙️ Settings
 You can configure the following within the app:

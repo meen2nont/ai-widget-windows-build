@@ -31,6 +31,8 @@ COPY --from=builder /app/dist ./dist
 # Copy the server.js proxy
 COPY server.js .
 
+VOLUME /app/data
+
 EXPOSE 9000
 
 CMD ["node", "server.js"]

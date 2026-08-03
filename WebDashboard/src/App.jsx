@@ -2,15 +2,16 @@ import { useState, useEffect, useRef } from 'react';
 import { 
   Settings, Server, Cloud, CreditCard, 
   RefreshCw, CheckCircle2, XCircle, Zap, Activity,
-  MessageSquare, LayoutGrid, List, Copy, Send, ExternalLink, Clock
+  MessageSquare, LayoutGrid, List, Copy, Send, ExternalLink, Clock, ShieldCheck, Lock
 } from 'lucide-react';
+import { encryptAndSaveConfig, loadAndDecryptConfig } from './utils/crypto';
 import './index.css';
 
 function App() {
   const [keys, setKeys] = useState({
-    deepseek: localStorage.getItem('deepseek_key') || '',
-    ollama: localStorage.getItem('ollama_key') || '',
-    ollamaPay: localStorage.getItem('ollama_pay_key') || ''
+    deepseek: '',
+    ollama: '',
+    ollamaPay: ''
   });
 
   const [refreshInterval, setRefreshInterval] = useState(
@@ -22,6 +23,52 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [lastRefreshed, setLastRefreshed] = useState(new Date());
   const [toastMsg, setToastMsg] = useState('');
+
+  // Load config from server (and fallback to local encrypted config) on initial mount
+  useEffect(() => {
+    async function initKeys() {
+      try {
+        const res = await fetch('/api/config');
+        if (res.ok) {
+          const serverKeys = await res.json();
+          if (serverKeys.deepseek || serverKeys.ollama || serverKeys.ollamaPay) {
+            setKeys(serverKeys);
+            return;
+          }
+        }
+      } catch (e) {
+        console.warn('Could not fetch server config, fallback to local', e);
+      }
+      const decryptedKeys = await loadAndDecryptConfig();
+      setKeys(decryptedKeys);
+    }
+    initKeys();
+  }, []);
+
+  const handleSaveKeys = async (e) => {
+    e.preventDefault();
+    // 1. Save to server-side JSON storage (/api/config)
+    try {
+      await fetch('/api/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(keys)
+      });
+    } catch (err) {
+      console.error('Failed to save config to server:', err);
+    }
+
+    // 2. Save encrypted backup to client-side localStorage
+    const success = await encryptAndSaveConfig(keys);
+    localStorage.setItem('refresh_interval', refreshInterval);
+    setShowSettings(false);
+    if (success) {
+      showToast('Settings saved to Server & encrypted locally!');
+    } else {
+      showToast('Settings saved to Server!');
+    }
+    fetchData();
+  };
 
   // Service Data State
   const [data, setData] = useState({
@@ -64,17 +111,6 @@ function App() {
   const showToast = (msg) => {
     setToastMsg(msg);
     setTimeout(() => setToastMsg(''), 3000);
-  };
-
-  const handleSaveKeys = (e) => {
-    e.preventDefault();
-    localStorage.setItem('deepseek_key', keys.deepseek);
-    localStorage.setItem('ollama_key', keys.ollama);
-    localStorage.setItem('ollama_pay_key', keys.ollamaPay);
-    localStorage.setItem('refresh_interval', refreshInterval);
-    setShowSettings(false);
-    showToast('Settings saved successfully!');
-    fetchData();
   };
 
   const fetchData = async () => {
@@ -606,9 +642,25 @@ function App() {
       {showSettings && (
         <div className="modal-overlay">
           <div className="modal-card">
-            <h2 style={{ marginTop: 0, marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <h2 style={{ marginTop: 0, marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <Settings size={22} style={{ color: '#818cf8' }} /> Dashboard Configuration
             </h2>
+
+            <div style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: '0.5rem', 
+              marginBottom: '1.5rem', 
+              padding: '0.5rem 0.85rem', 
+              background: 'rgba(16, 185, 129, 0.12)', 
+              border: '1px solid rgba(16, 185, 129, 0.25)', 
+              borderRadius: '10px', 
+              fontSize: '0.8rem', 
+              color: '#34d399' 
+            }}>
+              <ShieldCheck size={16} />
+              <span>API Keys are encrypted with <strong>AES-256 (AES-GCM) JSON</strong> in LocalStorage.</span>
+            </div>
 
             <form onSubmit={handleSaveKeys}>
               <div className="form-group">
