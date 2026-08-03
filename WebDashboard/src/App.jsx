@@ -4,7 +4,7 @@ import {
   MessageSquare, LayoutGrid, List, Copy, Send, Clock, ShieldCheck, Globe, Search,
   Plus, Trash2, Download, Link2, Pencil, RotateCcw, Paperclip, Wrench, FileText, X,
   Mic, MicOff, Volume2, VolumeX, BookOpen, DollarSign, ChevronDown, Table,
-  Bot, Code, PenLine, Languages, BarChart, Printer, Save, Mail
+  Bot, Code, PenLine, Languages, BarChart, Printer, Save, Mail, Brain
 } from 'lucide-react';
 import { DeepSeekIcon, OllamaIcon, OllamaPayIcon } from './components/AIIcons';
 import { encryptAndSaveConfig, loadAndDecryptConfig } from './utils/crypto';
@@ -52,13 +52,6 @@ function MetaBadges({ m }) {
         <div className="meta-badge scrape">
           <Link2 size={14} />
           <span>อ่านเนื้อหาจากลิงก์: <strong>{m.scrapedContent.title}</strong></span>
-        </div>
-      )}
-
-      {m?.executedTools?.length > 0 && (
-        <div className="meta-badge tool">
-          <Wrench size={14} />
-          <span>เรียกใช้เครื่องมือ: <strong>{m.executedTools.map(t => t.name).join(', ')}</strong></span>
         </div>
       )}
 
@@ -307,6 +300,9 @@ function App() {
   const [customPersonaPrompt, setCustomPersonaPrompt] = useState('');
   const [enableWebSearch, setEnableWebSearch] = useState(true);
   const [useTools, setUseTools] = useState(true);
+  const [useMemory, setUseMemory] = useState(() => localStorage.getItem('use_memory') !== '0');
+  const [memoryData, setMemoryData] = useState({ memories: [], summaries: [] });
+  const [newManualMemory, setNewManualMemory] = useState('');
   const [attachedFiles, setAttachedFiles] = useState([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [streamingContent, setStreamingContent] = useState('');
@@ -375,6 +371,8 @@ function App() {
     }
     loadSessions();
   }, []);
+
+  useEffect(() => { loadMemories(); }, []);
 
   // Save chat sessions helper
   const saveSessions = (updatedSessions) => {
@@ -745,6 +743,40 @@ function App() {
     handleEditUserMessage(targetIdx);
   };
 
+  const loadMemories = async () => {
+    try {
+      const res = await fetch('/api/memories');
+      if (res.ok) setMemoryData(await res.json());
+    } catch (e) { /* memory unavailable */ }
+  };
+
+  const rememberAssistantMessage = async (idx) => {
+    const m = messages[idx];
+    if (!m || m.role !== 'assistant') return;
+    try {
+      const res = await fetch('/api/memories/remember', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chatId: activeSessionId, messageIndex: idx })
+      });
+      if (res.ok) { showToast('จำไว้แล้ว 🧠'); loadMemories(); }
+      else { const err = await res.json().catch(() => ({})); showToast(err.error || 'จำไม่ได้ (ตรวจสอบ key Ollama)'); }
+    } catch (e) { showToast('จำไม่ได้ (ตรวจสอบ key Ollama)'); }
+  };
+
+  const unrememberChat = async () => {
+    try {
+      const res = await fetch('/api/memories/unremember', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chatId: activeSessionId })
+      });
+      if (res.ok) { showToast('ลบความจำของแชทนี้แล้ว'); loadMemories(); }
+    } catch (e) { /* ignore */ }
+  };
+
+  useEffect(() => { if (showSettings) loadMemories(); }, [showSettings]);
+
   const appendAssistantMessage = (assistantMsg) => {
     setSessions(prev => {
       const next = prev.map(s =>
@@ -831,6 +863,8 @@ function App() {
           model: isOllamaModel ? selectedModel.replace('ollama:', '') : selectedModel,
           webSearch: enableWebSearch,
           useTools: useTools,
+          useMemory: useMemory,
+          sessionId: activeSessionId,
           personaPrompt: activePersonaPrompt,
           attachedFiles: currentAttachedFiles,
           messages: [...messages, userMsgObj].map(m => ({ role: m.role, content: m.content }))
@@ -1272,6 +1306,16 @@ function App() {
                         <Globe size={14} />
                         <span>ค้นหาเว็บ: <strong>{enableWebSearch ? 'เปิด' : 'ปิด'}</strong></span>
                       </button>
+
+                      <button
+                        type="button"
+                        onClick={() => { const next = !useMemory; setUseMemory(next); localStorage.setItem('use_memory', next ? '1' : '0'); if (next) loadMemories(); }}
+                        className={`toggle-chip ${useMemory ? 'on violet' : 'off'}`}
+                        title="เปิด/ปิดระบบความจำ — จำข้อมูลและบทสนทนาข้ามแชท"
+                      >
+                        <Brain size={14} />
+                        <span>ความจำ: <strong>{useMemory ? 'เปิด' : 'ปิด'}</strong></span>
+                      </button>
                     </div>
                   </div>
 
@@ -1367,6 +1411,16 @@ function App() {
                       >
                         <Copy size={13} />
                       </button>
+                      {m.role === 'assistant' && (
+                        <button
+                          type="button"
+                          onClick={() => rememberAssistantMessage(idx)}
+                          className="action-icon-btn"
+                          title="จำข้อความนี้ไว้ (เพิ่มลงความจำ)"
+                        >
+                          <Brain size={13} />
+                        </button>
+                      )}
                       {/* Feature 1: TTS button on AI messages */}
                       {m.role === 'assistant' && (
                         <button
