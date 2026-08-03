@@ -41,12 +41,6 @@ function formatCompact(n) {
 function MetaBadges({ m }) {
   return (
     <>
-      {m?.searchResults?.length > 0 && (
-        <div className="meta-badge web">
-          <Globe size={14} />
-          <span>ดึงข้อมูลสดจากเว็บแล้ว ({m.searchResults.length} แหล่งอ้างอิง)</span>
-        </div>
-      )}
 
       {m?.scrapedContent && (
         <div className="meta-badge scrape">

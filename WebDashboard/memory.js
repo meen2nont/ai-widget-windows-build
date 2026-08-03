@@ -89,16 +89,31 @@ export function upsertSummary(db, sessionId, summary, embedding = null) {
   }
 }
 
-export function allEmbeddedRows(db) {
+export function allRows(db) {
   const memories = db.prepare('SELECT id, content, kind, created_at, embedding FROM memories')
     .all()
-    .filter(r => r.embedding)
-    .map(r => ({ type: 'memory', id: r.id, content: r.content, kind: r.kind, created_at: r.created_at, embedding: JSON.parse(r.embedding) }));
+    .map(r => ({
+      type: 'memory',
+      id: r.id,
+      content: r.content,
+      kind: r.kind,
+      created_at: r.created_at,
+      embedding: r.embedding ? JSON.parse(r.embedding) : null
+    }));
   const summaries = db.prepare('SELECT session_id, summary, created_at, embedding FROM chat_summaries')
     .all()
-    .filter(r => r.embedding)
-    .map(r => ({ type: 'summary', session_id: r.session_id, content: r.summary, created_at: r.created_at, embedding: JSON.parse(r.embedding) }));
+    .map(r => ({
+      type: 'summary',
+      session_id: r.session_id,
+      content: r.summary,
+      created_at: r.created_at,
+      embedding: r.embedding ? JSON.parse(r.embedding) : null
+    }));
   return [...memories, ...summaries];
+}
+
+export function allEmbeddedRows(db) {
+  return allRows(db).filter(r => r.embedding !== null);
 }
 
 // ── Embedding (Ollama Cloud) ────────────────────────
@@ -128,6 +143,32 @@ export async function embedTexts(serverConfig, texts) {
 
 // ── Retrieval ───────────────────────────────────────
 
+export function textMatchScore(query, content) {
+  if (!query || !content) return 0;
+  const q = String(query).toLowerCase().trim();
+  const c = String(content).toLowerCase().trim();
+  if (!q || !c) return 0;
+
+  if (c.includes(q) || q.includes(c)) return 0.8;
+
+  const qTokens = q.split(/[\s,._\-:?!\/]+/).filter(t => t.length > 1);
+  const cTokens = c.split(/[\s,._\-:?!\/]+/).filter(t => t.length > 1);
+
+  if (qTokens.length === 0 || cTokens.length === 0) return 0;
+
+  let matches = 0;
+  for (const qt of qTokens) {
+    if (cTokens.some(ct => ct.includes(qt) || qt.includes(ct))) {
+      matches++;
+    }
+  }
+
+  if (matches > 0) {
+    return 0.3 + (matches / qTokens.length) * 0.5;
+  }
+  return 0;
+}
+
 export function buildMemorySection(memories) {
   if (!Array.isArray(memories) || memories.length === 0) return '';
   const lines = memories.map(mem => {
@@ -139,11 +180,38 @@ export function buildMemorySection(memories) {
 }
 
 export async function retrieveTopMemories(db, serverConfig, query, limit = 5) {
+  const rows = allRows(db);
+  if (rows.length === 0) return [];
+
   const [vec] = (await embedTexts(serverConfig, [query])) || [];
-  if (!vec) return [];
-  return allEmbeddedRows(db)
-    .map(r => ({ ...r, score: cosineSimilarity(vec, r.embedding) }))
-    .filter(r => r.score >= 0)
+
+  if (vec) {
+    const scored = rows.map(r => {
+      let score = 0;
+      if (r.embedding) {
+        score = cosineSimilarity(vec, r.embedding);
+      } else {
+        score = textMatchScore(query, r.content);
+      }
+      if (r.kind === 'manual') score += 0.1;
+      return { ...r, score };
+    });
+
+    const validMatches = scored.filter(r => r.score >= 0).sort((a, b) => b.score - a.score);
+    if (validMatches.length > 0) {
+      return validMatches.slice(0, limit);
+    }
+  }
+
+  // Fallback when vector embedding service is unavailable or returned no results:
+  const scored = rows.map(r => {
+    let score = textMatchScore(query, r.content);
+    if (r.kind === 'manual') score += 0.5;
+    return { ...r, score };
+  });
+
+  return scored
+    .filter(r => r.score > 0)
     .sort((a, b) => b.score - a.score)
     .slice(0, limit);
 }

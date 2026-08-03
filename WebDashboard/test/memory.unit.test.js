@@ -121,11 +121,20 @@ test('embedTexts posts to ollama embed with Bearer auth', async () => {
   delete global.fetch;
 });
 
-test('retrieveTopMemories returns [] when embedding fails', async () => {
+test('retrieveTopMemories returns [] when db is empty even if embedding fails', async () => {
   const db = new Database(':memory:');
   initMemoryTables(db);
   const rows = await retrieveTopMemories(db, { ollama: '' }, 'hello');
   assert.deepStrictEqual(rows, []);
+});
+
+test('retrieveTopMemories falls back to text search & manual memory when embedding is unavailable', async () => {
+  const db = new Database(':memory:');
+  initMemoryTables(db);
+  addMemory(db, { content: 'ชื่อ นนท์', kind: 'manual' });
+  const rows = await retrieveTopMemories(db, { ollama: '' }, 'รู้ไหมฉันชื่ออะไร');
+  assert.strictEqual(rows.length, 1);
+  assert.strictEqual(rows[0].content, 'ชื่อ นนท์');
 });
 
 test('retrieveTopMemories ranks by similarity and caps at limit', async () => {
