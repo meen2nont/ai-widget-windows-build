@@ -100,3 +100,136 @@ export function allEmbeddedRows(db) {
     .map(r => ({ type: 'summary', session_id: r.session_id, content: r.summary, created_at: r.created_at, embedding: JSON.parse(r.embedding) }));
   return [...memories, ...summaries];
 }
+
+// ── Embedding (Ollama Cloud) ────────────────────────
+
+export async function embedTexts(serverConfig, texts) {
+  const key = serverConfig?.ollama;
+  const model = serverConfig?.embedModel || DEFAULT_EMBED_MODEL;
+  if (!key || !Array.isArray(texts) || texts.length === 0 || texts.every(t => !t.trim())) return null;
+  try {
+    const res = await fetch(OLLAMA_EMBED_URL, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model, input: texts })
+    });
+    if (!res.ok) {
+      console.error('[memory] embed HTTP', res.status, await res.text().catch(() => ''));
+      return null;
+    }
+    const json = await res.json();
+    return Array.isArray(json.embeddings) ? json.embeddings : null;
+  } catch (e) {
+    console.error('[memory] embed error', e.message);
+    return null;
+  }
+}
+
+// ── Retrieval ───────────────────────────────────────
+
+export function buildMemorySection(memories) {
+  if (!Array.isArray(memories) || memories.length === 0) return '';
+  const lines = memories.map(mem => {
+    const when = mem.created_at ? new Date(mem.created_at).toLocaleDateString('th-TH') : 'ไม่ทราบวัน';
+    const src = mem.type === 'summary' ? `สรุปแชท (${when})` : `จำไว้ (${when})`;
+    return `- ${mem.content} [${src}]`;
+  });
+  return `\n--- MEMORY (ความจำจากแชทก่อนหน้า) ---\n${lines.join('\n')}\n`;
+}
+
+export async function retrieveTopMemories(db, serverConfig, query, limit = 5) {
+  const [vec] = (await embedTexts(serverConfig, [query])) || [];
+  if (!vec) return [];
+  return allEmbeddedRows(db)
+    .map(r => ({ ...r, score: cosineSimilarity(vec, r.embedding) }))
+    .filter(r => r.score >= 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit);
+}
+
+// ── Extraction (DeepSeek) ───────────────────────────
+
+export function buildExtractionPrompt(messages) {
+  const transcript = (Array.isArray(messages) ? messages : [])
+    .filter(m => m.role === 'user' || m.role === 'assistant')
+    .map(m => `${m.role === 'user' ? 'User' : 'Assistant'}: ${typeof m.content === 'string' ? m.content : ''}`)
+    .join('\n');
+  return `You are a memory extraction engine for a personal AI assistant.
+
+Read the conversation transcript and produce TWO things:
+1. "facts": durable, long-term facts worth remembering across future chats (user's name, preferences, projects, important dates, recurring topics, things the user asked you to remember). Skip transient/one-off statements.
+2. "summary": a concise 1-2 sentence summary of what this conversation was about.
+
+Respond with ONLY a valid JSON object in this exact shape:
+{"facts": ["fact 1", "fact 2"], "summary": "one or two sentence summary"}
+
+Use the same language as the conversation (mostly Thai).
+
+TRANSCRIPT:
+${transcript}`;
+}
+
+export function parseExtractionResponse(text) {
+  try {
+    const cleaned = String(text).replace(/```json|```/g, '').trim();
+    const firstBrace = cleaned.indexOf('{');
+    const lastBrace = cleaned.lastIndexOf('}');
+    if (firstBrace === -1 || lastBrace === -1) return { facts: [], summary: '' };
+    const json = JSON.parse(cleaned.slice(firstBrace, lastBrace + 1));
+    return {
+      facts: Array.isArray(json.facts) ? json.facts.filter(f => typeof f === 'string' && f.trim()).map(f => f.trim()) : [],
+      summary: typeof json.summary === 'string' ? json.summary.trim() : ''
+    };
+  } catch (e) {
+    console.error('[memory] parse extraction failed', e.message);
+    return { facts: [], summary: '' };
+  }
+}
+
+export async function extractAndStore(db, serverConfig, sessionId, messages) {
+  const deepseekKey = serverConfig?.deepseek;
+  if (!deepseekKey) return null;
+  try {
+    const res = await fetch(DEEPSEEK_URL, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${deepseekKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: serverConfig?.chatModel || 'deepseek-chat',
+        messages: [
+          { role: 'system', content: buildExtractionPrompt(messages) },
+          { role: 'user', content: 'Extract memory from the transcript above.' }
+        ],
+        temperature: 0.2,
+        max_tokens: 1500
+      })
+    });
+    if (!res.ok) {
+      console.error('[memory] extraction HTTP', res.status);
+      return null;
+    }
+    const json = await res.json();
+    const content = json.choices?.[0]?.message?.content || '';
+    const { facts, summary } = parseExtractionResponse(content);
+    if (facts.length === 0 && !summary) return { facts: 0, summary: false };
+
+    const toEmbed = [...facts];
+    if (summary) toEmbed.push(`SUMMARY: ${summary}`);
+    const vectors = toEmbed.length > 0 ? await embedTexts(serverConfig, toEmbed) : [];
+
+    const existing = allEmbeddedRows(db).filter(r => r.type === 'memory').map(r => r.embedding);
+    facts.forEach((fact, i) => {
+      const vec = vectors?.[i];
+      if (vec && !isDuplicate(vec, existing)) {
+        addMemory(db, { content: fact, kind: 'auto', source_chat_id: sessionId, embedding: vec });
+        existing.push(vec);
+      }
+    });
+    if (summary) {
+      upsertSummary(db, sessionId, summary, vectors?.[facts.length] || null);
+    }
+    return { facts: facts.length, summary: Boolean(summary) };
+  } catch (e) {
+    console.error('[memory] extraction error', e.message);
+    return null;
+  }
+}
