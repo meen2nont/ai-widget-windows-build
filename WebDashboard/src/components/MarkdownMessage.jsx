@@ -195,7 +195,7 @@ export default function MarkdownMessage({ content }) {
           } else if (line.trim().startsWith('- ') || line.trim().startsWith('* ')) {
             // Bullet List
             renderedElements.push(
-              <div key={i} style={{ display: 'flex', gap: '0.5rem', marginLeft: '0.5rem', margin: '0.15rem 0' }}>
+              <div key={i} style={{ display: 'flex', gap: '0.5rem', margin: '0.15rem 0 0.15rem 0.5rem' }}>
                 <span style={{ color: '#38bdf8' }}>•</span>
                 <div>{formatInline(line.trim().substring(2))}</div>
               </div>
