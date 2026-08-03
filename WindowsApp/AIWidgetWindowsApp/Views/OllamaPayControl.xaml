@@ -1,0 +1,33 @@
+<UserControl x:Class="AIWidgetWindowsApp.Views.OllamaPayControl"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+             mc:Ignorable="d" 
+             d:DesignHeight="300" d:DesignWidth="300">
+    <StackPanel>
+        <TextBlock Text="Ollama Pay Overview" FontSize="16" FontWeight="Bold" Foreground="White" Margin="0,0,0,15"/>
+        
+        <StackPanel Orientation="Horizontal" Margin="0,0,0,5">
+            <TextBlock Text="Today's Tokens: " Foreground="LightGray"/>
+            <TextBlock Text="{Binding TodayTokens, StringFormat={}{0:N0}}" Foreground="White" FontWeight="Bold"/>
+        </StackPanel>
+        
+        <StackPanel Orientation="Horizontal" Margin="0,0,0,5">
+            <TextBlock Text="Monthly Tokens: " Foreground="LightGray"/>
+            <TextBlock Text="{Binding MonthTokens, StringFormat={}{0:N0}}" Foreground="White" FontWeight="Bold"/>
+        </StackPanel>
+
+        <StackPanel Orientation="Horizontal" Margin="0,0,0,5">
+            <TextBlock Text="Total Used: " Foreground="LightGray"/>
+            <TextBlock Text="{Binding TotalTokensUsed, StringFormat={}{0:N0}}" Foreground="White" FontWeight="Bold"/>
+        </StackPanel>
+        
+        <StackPanel Orientation="Horizontal" Margin="0,0,0,15">
+            <TextBlock Text="Remaining: " Foreground="LightGray"/>
+            <TextBlock Text="{Binding TokensRemaining, StringFormat={}{0:N0}}" Foreground="White" FontWeight="Bold"/>
+        </StackPanel>
+        
+        <TextBlock Text="{Binding ErrorMsg}" Foreground="Red" TextWrapping="Wrap"/>
+    </StackPanel>
+</UserControl>

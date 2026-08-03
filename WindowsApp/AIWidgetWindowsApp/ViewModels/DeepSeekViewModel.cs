@@ -103,7 +103,7 @@ namespace AIWidgetWindowsApp.ViewModels
                             Balance = info.TotalBalance ?? "--";
                             Currency = info.Currency ?? "USD";
                             
-                            // To do: Add daily spend logic and low balance notifications
+                            UpdateMainWindow($"${Balance} {Currency}");
                         }
                     }
                 }
@@ -182,6 +182,14 @@ namespace AIWidgetWindowsApp.ViewModels
             CopySuccess = true;
             await Task.Delay(2000);
             CopySuccess = false;
+        }
+
+        private void UpdateMainWindow(string value)
+        {
+            if (Application.Current.MainWindow is MainWindow mainWindow)
+            {
+                mainWindow.UpdateTrayTextIfSelected(1, value);
+            }
         }
     }
 }

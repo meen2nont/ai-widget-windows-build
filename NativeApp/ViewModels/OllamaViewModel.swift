@@ -69,7 +69,7 @@ class OllamaViewModel: ObservableObject {
         self.selectedOllamaModel = UserDefaults.standard.string(forKey: "SelectedOllamaModel") ?? ""
         fetchData()
         startAutoRefresh()
-        AppDelegate.shared?.updateOllamaTitle(sessionPercent: self.sessionRemainingPercent)
+        AppDelegate.shared?.updateOllamaTitle(sessionPercent: self.sessionUsagePercent)
     }
     
     func startAutoRefresh() {
@@ -119,7 +119,7 @@ class OllamaViewModel: ObservableObject {
                 if let cost = res.activity?.cost {
                     self.cloudCost = cost
                 }
-                AppDelegate.shared?.updateOllamaTitle(sessionPercent: self.sessionRemainingPercent)
+                AppDelegate.shared?.updateOllamaTitle(sessionPercent: self.sessionUsagePercent)
             })
             .store(in: &cancellables)
     }

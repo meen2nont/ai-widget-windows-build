@@ -4,27 +4,21 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:AIWidgetWindowsApp"
-        xmlns:viewmodels="clr-namespace:AIWidgetWindowsApp.ViewModels"
+        xmlns:views="clr-namespace:AIWidgetWindowsApp.Views"
         xmlns:tb="http://www.hardcodet.net/taskbar"
         mc:Ignorable="d"
-        Title="AI Widget" Height="450" Width="400"
+        Title="AI Widget" Height="500" Width="400"
         WindowStyle="None"
         AllowsTransparency="True"
         Background="Transparent"
         ShowInTaskbar="False"
         Topmost="True">
     
-    <Window.DataContext>
-        <viewmodels:DeepSeekViewModel />
-    </Window.DataContext>
-
-    <!-- System Tray Icon -->
     <tb:TaskbarIcon
         x:Name="MyNotifyIcon"
         IconSource="/deepseek_favicon.ico"
         ToolTipText="AI Widget">
         
-        <!-- Tray Context Menu -->
         <tb:TaskbarIcon.ContextMenu>
             <ContextMenu>
                 <MenuItem Header="Show" Click="MenuItemShow_Click"/>
@@ -33,35 +27,29 @@
         </tb:TaskbarIcon.ContextMenu>
     </tb:TaskbarIcon>
 
-    <!-- Main UI Popup content -->
     <Border Background="#1E1E1E" CornerRadius="12" Padding="20">
-        <StackPanel>
-            <TextBlock Text="AI Widget - DeepSeek" FontSize="20" FontWeight="Bold" Foreground="White" Margin="0,0,0,20"/>
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
             
-            <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
-                <TextBlock Text="Balance: " Foreground="LightGray"/>
-                <TextBlock Text="{Binding Balance}" Foreground="White" FontWeight="Bold"/>
-                <TextBlock Text=" " Foreground="White" />
-                <TextBlock Text="{Binding Currency}" Foreground="White"/>
+            <!-- Header -->
+            <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,15">
+                <TextBlock Text="AI Widget Dashboard" FontSize="16" FontWeight="Bold" Foreground="White" VerticalAlignment="Center"/>
             </StackPanel>
 
-            <TextBox Text="{Binding PromptText, UpdateSourceTrigger=PropertyChanged}" 
-                     Height="80" TextWrapping="Wrap" AcceptsReturn="True" 
-                     Background="#2D2D2D" Foreground="White" BorderThickness="0"
-                     Margin="0,0,0,10" Padding="5"/>
-                     
-            <Button Content="Send" Command="{Binding SendCommand}" 
-                    Background="#007ACC" Foreground="White" Padding="10,5" BorderThickness="0"
-                    HorizontalAlignment="Right" Margin="0,0,0,20"/>
-                    
-            <TextBlock Text="Response:" Foreground="LightGray" Margin="0,0,0,5"/>
-            <ScrollViewer Height="120">
-                <TextBlock Text="{Binding AiResponse}" Foreground="White" TextWrapping="Wrap"/>
-            </ScrollViewer>
-            
-            <Button Content="Copy" Command="{Binding CopyToClipboardCommand}" 
-                    Background="#333333" Foreground="White" Padding="10,5" BorderThickness="0"
-                    HorizontalAlignment="Right" Margin="0,10,0,0"/>
-        </StackPanel>
+            <!-- Tabs -->
+            <UniformGrid Grid.Row="1" Columns="4" Margin="0,0,0,15">
+                <Button Content="Overview" Tag="0" Click="TabButton_Click" Background="{Binding SelectedTab0Bg}" Foreground="{Binding SelectedTab0Fg}" BorderThickness="0" Padding="5"/>
+                <Button Content="DeepSeek" Tag="1" Click="TabButton_Click" Background="{Binding SelectedTab1Bg}" Foreground="{Binding SelectedTab1Fg}" BorderThickness="0" Padding="5"/>
+                <Button Content="Ollama"   Tag="2" Click="TabButton_Click" Background="{Binding SelectedTab2Bg}" Foreground="{Binding SelectedTab2Fg}" BorderThickness="0" Padding="5"/>
+                <Button Content="Pay"      Tag="3" Click="TabButton_Click" Background="{Binding SelectedTab3Bg}" Foreground="{Binding SelectedTab3Fg}" BorderThickness="0" Padding="5"/>
+            </UniformGrid>
+
+            <!-- Content Area -->
+            <ContentControl Grid.Row="2" x:Name="MainContentControl" />
+        </Grid>
     </Border>
 </Window>

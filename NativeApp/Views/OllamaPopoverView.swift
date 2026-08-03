@@ -72,55 +72,65 @@ struct OllamaPopoverView: View {
                 // 5-Hour Session Window Progress (REAL DATA)
                 VStack(alignment: .leading, spacing: 4) {
                     HStack {
-                        Text("5-Hour Session Window")
+                        Text("Session usage")
                             .font(.system(size: 10, weight: .medium))
                         Spacer()
-                        Text("\(vm.sessionRemainingPercent)% Remaining (\(vm.sessionUsagePercent)% Used)")
+                        Text("\(vm.sessionUsagePercent)% used")
                             .font(.system(size: 9, weight: .semibold))
-                            .foregroundColor(quotaColor(for: vm.sessionRemainingPercent))
+                            .foregroundColor(.primary)
                     }
                     GeometryReader { geo in
                         ZStack(alignment: .leading) {
                             RoundedRectangle(cornerRadius: 4)
-                                .fill(Color.primary.opacity(0.08))
+                                .fill(Color.primary.opacity(0.1))
                             RoundedRectangle(cornerRadius: 4)
-                                .fill(quotaColor(for: vm.sessionRemainingPercent))
-                                .frame(width: max(0, geo.size.width * CGFloat(vm.sessionRemainingPercent) / 100.0))
+                                .fill(Color.primary.opacity(0.6))
+                                .frame(width: max(0, geo.size.width * CGFloat(vm.sessionUsagePercent) / 100.0))
                         }
                     }
                     .frame(height: 6)
+                    
+                    Text("Resets in a few hours.")
+                        .font(.system(size: 9))
+                        .foregroundColor(.secondary)
+                        .padding(.top, 2)
                 }
                 
                 // 7-Day Weekly Window Progress (REAL DATA)
                 VStack(alignment: .leading, spacing: 4) {
                     HStack {
-                        Text("7-Day Weekly Window")
+                        Text("Weekly usage")
                             .font(.system(size: 10, weight: .medium))
                         Spacer()
-                        Text("\(vm.weeklyRemainingPercent)% Remaining (\(vm.weeklyUsagePercent)% Used)")
+                        Text("\(vm.weeklyUsagePercent)% used")
                             .font(.system(size: 9, weight: .semibold))
-                            .foregroundColor(quotaColor(for: vm.weeklyRemainingPercent))
+                            .foregroundColor(.primary)
                     }
                     GeometryReader { geo in
                         ZStack(alignment: .leading) {
                             RoundedRectangle(cornerRadius: 4)
-                                .fill(Color.primary.opacity(0.08))
+                                .fill(Color.primary.opacity(0.1))
                             RoundedRectangle(cornerRadius: 4)
-                                .fill(quotaColor(for: vm.weeklyRemainingPercent))
-                                .frame(width: max(0, geo.size.width * CGFloat(vm.weeklyRemainingPercent) / 100.0))
+                                .fill(Color.primary.opacity(0.6))
+                                .frame(width: max(0, geo.size.width * CGFloat(vm.weeklyUsagePercent) / 100.0))
                         }
                     }
                     .frame(height: 6)
+                    
+                    Text("Resets in 1 week.")
+                        .font(.system(size: 9))
+                        .foregroundColor(.secondary)
+                        .padding(.top, 2)
                 }
             }
             .padding(12)
             .background(
                 RoundedRectangle(cornerRadius: 12)
-                    .fill(LinearGradient(colors: [Color.orange.opacity(0.12), Color.red.opacity(0.04)], startPoint: .topLeading, endPoint: .bottomTrailing))
+                    .fill(Color.primary.opacity(0.02))
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 12)
-                    .stroke(Color.orange.opacity(0.25), lineWidth: 1)
+                    .stroke(Color.primary.opacity(0.1), lineWidth: 1)
             )
             
             // Footer
@@ -159,16 +169,6 @@ struct OllamaPopoverView: View {
                 .foregroundColor(.secondary)
                 .focusable(false)
             }
-        }
-    }
-    
-    private func quotaColor(for percent: Int) -> Color {
-        if percent > 30 {
-            return .green
-        } else if percent > 10 {
-            return .orange
-        } else {
-            return .red
         }
     }
 }

@@ -20,28 +20,59 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var mainPopover: NSPopover!
     var globalEventMonitor: Any?
     
-    func updateDeepSeekTitle(balance: String) {
+    var latestDeepSeekBalance: String?
+    var latestOllamaPercent: Int?
+    var latestOllamaPayStr: String?
+    
+    func refreshMenuBarTitle() {
         DispatchQueue.main.async { [weak self] in
-            self?.statusItem?.button?.title = " ✨ $\(balance)"
+            guard let self = self else { return }
+            let mode = UserDefaults.standard.string(forKey: "MenuBarDisplayMode") ?? "deepseek"
+            
+            switch mode {
+            case "deepseek":
+                if let bal = self.latestDeepSeekBalance {
+                    self.statusItem?.button?.title = " ✨ $\(bal)"
+                } else {
+                    self.statusItem?.button?.title = " ✨ DeepSeek"
+                }
+            case "ollama":
+                if let pct = self.latestOllamaPercent {
+                    self.statusItem?.button?.title = " ☁️ \(pct)%"
+                } else {
+                    self.statusItem?.button?.title = " ☁️ Ollama"
+                }
+            case "ollamapay":
+                if let str = self.latestOllamaPayStr {
+                    self.statusItem?.button?.title = " 💳 \(str)"
+                } else {
+                    self.statusItem?.button?.title = " 💳 Pay"
+                }
+            case "default":
+                fallthrough
+            default:
+                self.statusItem?.button?.title = " AI Widget"
+            }
         }
+    }
+    
+    func updateDeepSeekTitle(balance: String) {
+        self.latestDeepSeekBalance = balance
+        refreshMenuBarTitle()
     }
     
     func updateOllamaTitle(sessionPercent: Int) {
-        DispatchQueue.main.async { [weak self] in
-            self?.statusItem?.button?.title = " ☁️ \(sessionPercent)%"
-        }
+        self.latestOllamaPercent = sessionPercent
+        refreshMenuBarTitle()
     }
     
     func updateOllamaPayTitle(todayStr: String) {
-        DispatchQueue.main.async { [weak self] in
-            self?.statusItem?.button?.title = " 💳 \(todayStr)"
-        }
+        self.latestOllamaPayStr = todayStr
+        refreshMenuBarTitle()
     }
     
     func resetStatusItemTitle() {
-        DispatchQueue.main.async { [weak self] in
-            self?.statusItem?.button?.title = " AI Widget"
-        }
+        refreshMenuBarTitle()
     }
     
     func applicationDidFinishLaunching(_ notification: Notification) {

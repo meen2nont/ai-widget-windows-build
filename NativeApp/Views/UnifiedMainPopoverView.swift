@@ -43,6 +43,7 @@ struct UnifiedMainPopoverView: View {
     
     @AppStorage("EnableNotifications") private var enableNotifications: Bool = true
     @AppStorage("GlobalRefreshInterval") private var globalRefreshInterval: Int = 300
+    @AppStorage("MenuBarDisplayMode") private var menuBarDisplayMode: String = "default"
     
     @State private var selectedTab: Int = 0 // 0: Overview, 1: DeepSeek, 2: Ollama, 3: Ollama Pay
     @State private var showSettings: Bool = false
@@ -65,6 +66,17 @@ struct UnifiedMainPopoverView: View {
         dsVM.refreshInterval = interval
         olVM.refreshInterval = interval
         opVM.refreshInterval = interval
+    }
+    
+    func changeTab(to tab: Int) {
+        selectedTab = tab
+        switch tab {
+        case 1: menuBarDisplayMode = "deepseek"
+        case 2: menuBarDisplayMode = "ollama"
+        case 3: menuBarDisplayMode = "ollamapay"
+        default: menuBarDisplayMode = "default"
+        }
+        AppDelegate.shared?.refreshMenuBarTitle()
     }
     
     var body: some View {
@@ -104,12 +116,11 @@ struct UnifiedMainPopoverView: View {
                 .focusable(false)
             }
             
-            // Row 2: 4 Equal Full-Width Tabs
             HStack(spacing: 6) {
-                TabPillButton(title: "Overview", icon: "square.grid.2x2.fill", isSelected: selectedTab == 0) { selectedTab = 0 }
-                TabPillButton(title: "DeepSeek", icon: "sparkles", isSelected: selectedTab == 1) { selectedTab = 1 }
-                TabPillButton(title: "Ollama", icon: "cloud.fill", isSelected: selectedTab == 2) { selectedTab = 2 }
-                TabPillButton(title: "Pay", icon: "creditcard.fill", isSelected: selectedTab == 3) { selectedTab = 3 }
+                TabPillButton(title: "Overview", icon: "square.grid.2x2.fill", isSelected: selectedTab == 0) { changeTab(to: 0) }
+                TabPillButton(title: "DeepSeek", icon: "sparkles", isSelected: selectedTab == 1) { changeTab(to: 1) }
+                TabPillButton(title: "Ollama", icon: "cloud.fill", isSelected: selectedTab == 2) { changeTab(to: 2) }
+                TabPillButton(title: "Pay", icon: "creditcard.fill", isSelected: selectedTab == 3) { changeTab(to: 3) }
             }
             
             Divider()
@@ -210,7 +221,7 @@ struct UnifiedMainPopoverView: View {
     var overviewTabContent: some View {
         VStack(spacing: 10) {
             // DeepSeek Summary Card (Interactive Button)
-            Button(action: { selectedTab = 1 }) {
+            Button(action: { changeTab(to: 1) }) {
                 HStack {
                     HStack(spacing: 6) {
                         let iconPath = getAssetPath("deepseek_icon.png")
@@ -251,7 +262,7 @@ struct UnifiedMainPopoverView: View {
             .focusable(false)
             
             // Ollama Cloud Summary Card (Interactive Button)
-            Button(action: { selectedTab = 2 }) {
+            Button(action: { changeTab(to: 2) }) {
                 HStack {
                     HStack(spacing: 6) {
                         let iconPath = getAssetPath("ollama_icon.png")
@@ -271,10 +282,10 @@ struct UnifiedMainPopoverView: View {
                     Spacer()
                     
                     VStack(alignment: .trailing, spacing: 1) {
-                        Text("\(olVM.sessionRemainingPercent)% Session")
+                        Text("\(olVM.sessionUsagePercent)% Session")
                             .font(.system(size: 13, weight: .bold, design: .rounded))
-                            .foregroundColor(olVM.sessionRemainingPercent > 20 ? .green : .red)
-                        Text("Weekly: \(olVM.weeklyRemainingPercent)% remaining")
+                            .foregroundColor(.primary)
+                        Text("Weekly: \(olVM.weeklyUsagePercent)% used")
                             .font(.system(size: 9))
                             .foregroundColor(.secondary)
                     }
@@ -292,7 +303,7 @@ struct UnifiedMainPopoverView: View {
             .focusable(false)
             
             // Ollama Pay Summary Card (Interactive Button)
-            Button(action: { selectedTab = 3 }) {
+            Button(action: { changeTab(to: 3) }) {
                 HStack {
                     HStack(spacing: 6) {
                         Image(systemName: "creditcard.fill")
