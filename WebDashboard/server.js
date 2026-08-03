@@ -329,12 +329,34 @@ const AVAILABLE_TOOLS = [
                 required: ["expression"]
             }
         }
+    },
+    {
+        type: "function",
+        function: {
+            name: "memory_search",
+            description: "Search the user's saved memory and past chat summaries for information they told you in earlier chats (e.g. their name, preferences, or what a previous conversation was about).",
+            parameters: {
+                type: "object",
+                properties: {
+                    query: { type: "string", description: "What to look up" }
+                },
+                required: ["query"]
+            }
+        }
     }
 ];
 
 // Helper to execute function tools
-async function executeToolCall(toolName, args) {
+async function executeToolCall(toolName, args, db, serverConfig) {
     try {
+        if (toolName === 'memory_search') {
+            const results = await retrieveTopMemories(db, serverConfig, (args.query || ''));
+            return JSON.stringify(results.map(r => ({
+                content: r.content,
+                type: r.type,
+                when: r.created_at ? new Date(r.created_at).toLocaleDateString('th-TH') : null
+            })));
+        }
         if (toolName === 'web_search') {
             const results = await performWebSearch(args.query || '');
             return JSON.stringify(results.slice(0, 3));
@@ -484,7 +506,7 @@ app.post('/api/deepseek/chat', async (req, res) => {
         const serverConfig = getServerConfig();
         const authHeader = req.headers.authorization || (serverConfig.deepseek ? `Bearer ${serverConfig.deepseek}` : '');
         
-        const { webSearch, personaPrompt, attachedFiles, useTools, messages, ...otherParams } = req.body;
+        const { webSearch, personaPrompt, attachedFiles, useTools, useMemory, sessionId, messages, ...otherParams } = req.body;
         let finalMessages = Array.isArray(messages) ? [...messages] : [];
         let searchResults = [];
         let scrapedContent = null;
@@ -540,7 +562,15 @@ app.post('/api/deepseek/chat', async (req, res) => {
             systemContent += `\n--- LIVE WEB SEARCH RESULTS ---\n${searchFormatted}\n----------------------------------\n`;
         }
 
-        systemContent += `\nInstructions: Use the real-time date, role persona, attached files, scraped web content, and search results above to provide a clear, helpful, and accurate response.`;
+        if (useMemory) {
+            const lastUserMsg = [...finalMessages].reverse().find(m => m.role === 'user');
+            if (lastUserMsg && typeof lastUserMsg.content === 'string') {
+                const mems = await retrieveTopMemories(db, serverConfig, lastUserMsg.content, 5);
+                systemContent += buildMemorySection(mems);
+            }
+        }
+
+        systemContent += `\nInstructions: Use the real-time date, role persona, attached files, scraped web content, search results, and memory above to provide a clear, helpful, and accurate response.`;
 
         const systemPromptObj = {
             role: 'system',
@@ -571,7 +601,7 @@ app.post('/api/deepseek/chat', async (req, res) => {
         };
 
         if (useTools) {
-            payload.tools = AVAILABLE_TOOLS;
+            payload.tools = useMemory ? AVAILABLE_TOOLS : AVAILABLE_TOOLS.filter(t => t.function.name !== 'memory_search');
         }
 
         // ── SSE STREAMING MODE ──────────────────────────────────────────
@@ -682,7 +712,7 @@ app.post('/api/deepseek/chat', async (req, res) => {
             for (const tc of result.toolCalls) {
                 const fnName = tc.function.name;
                 const fnArgs = JSON.parse(tc.function.arguments || '{}');
-                const toolOutput = await executeToolCall(fnName, fnArgs);
+                const toolOutput = await executeToolCall(fnName, fnArgs, db, getServerConfig());
                 executedTools.push({ name: fnName, args: fnArgs, result: toolOutput });
                 send('meta', { executedTools: [executedTools[executedTools.length - 1]] });
                 finalMessages.push({ role: 'tool', tool_call_id: tc.id, content: toolOutput });
@@ -712,6 +742,14 @@ app.post('/api/deepseek/chat', async (req, res) => {
         });
         clearInterval(ping);
         res.end();
+
+        if (useMemory && sessionId && serverConfig.deepseek) {
+            extractAndStore(db, serverConfig, sessionId, finalMessages)
+                .then(result => {
+                    if (result) console.log('[memory] extracted', result.facts, 'facts, summary:', result.summary);
+                })
+                .catch(e => console.error('[memory] extraction error', e.message));
+        }
     } catch (error) {
         console.error('DeepSeek chat error:', error);
         try {
@@ -726,7 +764,17 @@ app.post('/api/ollama/chat', async (req, res) => {
     try {
         const serverConfig = getServerConfig();
         const authHeader = req.headers.authorization || (serverConfig.ollama ? `Bearer ${serverConfig.ollama}` : '');
-        const { model, messages } = req.body;
+        const { model, messages, useMemory, sessionId } = req.body;
+        let finalMessages = Array.isArray(messages) ? [...messages] : [];
+
+        if (useMemory) {
+            const lastUser = [...finalMessages].reverse().find(m => m.role === 'user');
+            if (lastUser && typeof lastUser.content === 'string') {
+                const mems = await retrieveTopMemories(db, serverConfig, lastUser.content, 5);
+                const section = buildMemorySection(mems);
+                if (section) finalMessages = [{ role: 'system', content: section.trim() }, ...finalMessages];
+            }
+        }
 
         sseHeaders(res);
         const upstream = new AbortController();
@@ -740,7 +788,7 @@ app.post('/api/ollama/chat', async (req, res) => {
             },
             body: JSON.stringify({
                 model: model || 'llama3',
-                messages: messages,
+                messages: finalMessages,
                 stream: true
             }),
             signal: upstream.signal
@@ -786,6 +834,14 @@ app.post('/api/ollama/chat', async (req, res) => {
             executedTools: null
         });
         res.end();
+
+        if (useMemory && sessionId && serverConfig.deepseek) {
+            extractAndStore(db, serverConfig, sessionId, finalMessages)
+                .then(result => {
+                    if (result) console.log('[memory] extracted', result.facts, 'facts, summary:', result.summary);
+                })
+                .catch(e => console.error('[memory] extraction error', e.message));
+        }
     } catch (error) {
         console.error('Ollama chat error:', error);
         try {
