@@ -133,6 +133,126 @@ const PORT = process.env.PORT || 9000;
 app.use(cors());
 app.use(express.json());
 
+// ── Auth Logic ──────────────────────────────────────────────────────────
+const getAdminHash = () => {
+    const row = db.prepare("SELECT value FROM config_store WHERE key = 'admin_password_hash'").get();
+    return row ? row.value : null;
+};
+const getAdminToken = () => {
+    const row = db.prepare("SELECT value FROM config_store WHERE key = 'admin_session_token'").get();
+    return row ? row.value : null;
+};
+const setAdminHash = (hash) => db.prepare("INSERT OR REPLACE INTO config_store (key, value) VALUES ('admin_password_hash', ?)").run(hash);
+const setAdminToken = (token) => db.prepare("INSERT OR REPLACE INTO config_store (key, value) VALUES ('admin_session_token', ?)").run(token);
+const clearAdminToken = () => db.prepare("DELETE FROM config_store WHERE key = 'admin_session_token'").run();
+
+app.get('/api/auth/status', (req, res) => {
+    const hash = getAdminHash();
+    if (!hash) return res.json({ status: 'needs_setup' });
+    
+    // Check if token in header is valid
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+        const token = authHeader.split(' ')[1];
+        const storedToken = getAdminToken();
+        if (storedToken && token === storedToken) {
+            return res.json({ status: 'authenticated' });
+        }
+    }
+    res.json({ status: 'needs_login' });
+});
+
+app.post('/api/auth/setup', (req, res) => {
+    const { password } = req.body;
+    if (!password) return res.status(400).json({ error: 'Password required' });
+    if (getAdminHash()) return res.status(400).json({ error: 'Already setup' });
+    
+    const salt = crypto.randomBytes(16).toString('hex');
+    const hashBuffer = crypto.scryptSync(password, salt, 64);
+    const hash = `${salt}:${hashBuffer.toString('hex')}`;
+    setAdminHash(hash);
+    
+    const token = crypto.randomBytes(32).toString('hex');
+    setAdminToken(token);
+    res.json({ success: true, token });
+});
+
+app.post('/api/auth/login', (req, res) => {
+    const { password } = req.body;
+    if (!password) return res.status(400).json({ error: 'Password required' });
+    
+    const storedHash = getAdminHash();
+    if (!storedHash) return res.status(400).json({ error: 'Not setup yet' });
+    
+    const [salt, key] = storedHash.split(':');
+    const hashedBuffer = crypto.scryptSync(password, salt, 64);
+    const keyBuffer = Buffer.from(key, 'hex');
+    
+    if (!crypto.timingSafeEqual(hashedBuffer, keyBuffer)) {
+        return res.status(401).json({ error: 'Invalid password' });
+    }
+    
+    const token = crypto.randomBytes(32).toString('hex');
+    setAdminToken(token);
+    res.json({ success: true, token });
+});
+
+app.post('/api/auth/logout', (req, res) => {
+    clearAdminToken();
+    res.json({ success: true });
+});
+
+app.post('/api/user/change-password', (req, res) => {
+    // This route is protected by the middleware below because it doesn't start with /auth/
+    const { currentPassword, newPassword } = req.body;
+    if (!currentPassword || !newPassword) return res.status(400).json({ error: 'Current and new passwords required' });
+    
+    const storedHash = getAdminHash();
+    if (!storedHash) return res.status(400).json({ error: 'Not setup yet' });
+    
+    const [salt, key] = storedHash.split(':');
+    const hashedBuffer = crypto.scryptSync(currentPassword, salt, 64);
+    const keyBuffer = Buffer.from(key, 'hex');
+    
+    if (!crypto.timingSafeEqual(hashedBuffer, keyBuffer)) {
+        return res.status(401).json({ error: 'รหัสผ่านปัจจุบันไม่ถูกต้อง' });
+    }
+    
+    // Hash new password
+    const newSalt = crypto.randomBytes(16).toString('hex');
+    const newHashBuffer = crypto.scryptSync(newPassword, newSalt, 64);
+    const newHash = `${newSalt}:${newHashBuffer.toString('hex')}`;
+    
+    setAdminHash(newHash);
+    
+    // Invalidate session so they must login again with new password
+    clearAdminToken();
+    
+    res.json({ success: true });
+});
+
+app.use('/api', (req, res, next) => {
+    if (req.path.startsWith('/auth/')) return next();
+    
+    const hash = getAdminHash();
+    if (!hash) return res.status(401).json({ error: 'Setup required', code: 'NEEDS_SETUP' });
+    
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return res.status(401).json({ error: 'Unauthorized', code: 'UNAUTHORIZED' });
+    }
+    
+    const token = authHeader.split(' ')[1];
+    const storedToken = getAdminToken();
+    
+    if (!storedToken || token !== storedToken) {
+        return res.status(401).json({ error: 'Unauthorized', code: 'UNAUTHORIZED' });
+    }
+    
+    next();
+});
+// ────────────────────────────────────────────────────────────────────────
+
 // Get Config Endpoint — returns service availability booleans, NOT actual API keys
 app.get('/api/config', (req, res) => {
     const cfg = getServerConfig();

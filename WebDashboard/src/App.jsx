@@ -4,7 +4,7 @@ import {
   MessageSquare, LayoutGrid, List, Copy, Send, Clock, ShieldCheck, Globe, Search,
   Plus, Trash2, Download, Link2, Pencil, RotateCcw, Paperclip, Wrench, FileText, X,
   Mic, MicOff, Volume2, VolumeX, BookOpen, DollarSign, ChevronDown, Table,
-  Bot, Code, PenLine, Languages, BarChart, Printer, Save, Mail, Brain
+  Bot, Code, PenLine, Languages, BarChart, Printer, Save, Mail, Brain, LogOut
 } from 'lucide-react';
 import { DeepSeekIcon, OllamaIcon, OllamaPayIcon } from './components/AIIcons';
 import { encryptAndSaveConfig, loadAndDecryptConfig } from './utils/crypto';
@@ -180,7 +180,109 @@ async function parseSSEEvents(response, handlers) {
   if (buffer.trim()) processBlock(buffer);
 }
 
+// --- Global Fetch Override for Auth ---
+const originalFetch = window.fetch;
+window.fetch = async (...args) => {
+  let [resource, config] = args;
+  
+  if (typeof resource === 'string' && resource.startsWith('/api/') && !resource.startsWith('/api/auth/')) {
+    const token = localStorage.getItem('app_session_token');
+    if (token) {
+      config = config || {};
+      config.headers = {
+        ...config.headers,
+        'Authorization': `Bearer ${token}`
+      };
+    }
+  }
+  
+  const response = await originalFetch(resource, config);
+  if (response.status === 401) {
+    window.dispatchEvent(new Event('auth-failed'));
+  }
+  return response;
+};
+
 function App() {
+  const [authState, setAuthState] = useState('loading');
+  const [authPassword, setAuthPassword] = useState('');
+  const [authError, setAuthError] = useState('');
+
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        const res = await fetch('/api/auth/status', {
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('app_session_token') || ''}`
+          }
+        });
+        const data = await res.json();
+        setAuthState(data.status || 'needs_login');
+      } catch (e) {
+        setAuthState('needs_login');
+      }
+    };
+    checkAuth();
+
+    const handleAuthFailed = () => {
+      setAuthState('needs_login');
+      localStorage.removeItem('app_session_token');
+    };
+    window.addEventListener('auth-failed', handleAuthFailed);
+    return () => window.removeEventListener('auth-failed', handleAuthFailed);
+  }, []);
+
+  const handleSetup = async (e) => {
+    e.preventDefault();
+    setAuthError('');
+    try {
+      const res = await fetch('/api/auth/setup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: authPassword })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        localStorage.setItem('app_session_token', data.token);
+        setAuthState('authenticated');
+      } else {
+        setAuthError(data.error || 'เกิดข้อผิดพลาด');
+      }
+    } catch (e) {
+      setAuthError('Connection failed');
+    }
+  };
+
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    setAuthError('');
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: authPassword })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        localStorage.setItem('app_session_token', data.token);
+        setAuthState('authenticated');
+      } else {
+        setAuthError(data.error || 'รหัสผ่านไม่ถูกต้อง');
+      }
+    } catch (e) {
+      setAuthError('Connection failed');
+    }
+  };
+
+  const handleLogout = async () => {
+    await fetch('/api/auth/logout', { method: 'POST' });
+    localStorage.removeItem('app_session_token');
+    setAuthState('needs_login');
+    setAuthPassword('');
+  };
+
+  // (Auth UI moved to bottom to prevent hook order errors)
+
   const [keys, setKeys] = useState({
     deepseek: '',
     ollama: '',
@@ -214,6 +316,8 @@ function App() {
   };
 
   const [showSettings, setShowSettings] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [lastRefreshed, setLastRefreshed] = useState(new Date());
   const [toastMsg, setToastMsg] = useState('');
@@ -277,6 +381,29 @@ function App() {
       showToast('Failed to save settings');
     }
     fetchData();
+  };
+
+  const handleChangePassword = async (e) => {
+    e.preventDefault();
+    try {
+      const res = await fetch('/api/user/change-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ currentPassword, newPassword })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        showToast('เปลี่ยนรหัสผ่านเรียบร้อยแล้ว กรุณาเข้าสู่ระบบใหม่');
+        setCurrentPassword('');
+        setNewPassword('');
+        setShowSettings(false);
+        window.dispatchEvent(new Event('auth-failed'));
+      } else {
+        showToast(data.error || 'เปลี่ยนรหัสผ่านไม่สำเร็จ');
+      }
+    } catch (e) {
+      showToast('Connection failed');
+    }
   };
 
   // Service Data State
@@ -1000,6 +1127,55 @@ function App() {
 
   const activeServicesCount = [data.deepseek.available, data.ollama.available, data.ollamaPay.available].filter(Boolean).length;
 
+  if (authState === 'loading') {
+    return <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#0d1117', color: 'white' }}>Loading...</div>;
+  }
+
+  if (authState === 'needs_setup' || authState === 'needs_login') {
+    return (
+      <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#0d1117', color: '#e6edf3', fontFamily: 'sans-serif' }}>
+        <div style={{ background: '#161b22', padding: '2.5rem', borderRadius: '16px', border: '1px solid #30363d', boxShadow: '0 12px 32px rgba(0,0,0,0.6)', width: '100%', maxWidth: '420px', boxSizing: 'border-box' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.5rem', justifyContent: 'center' }}>
+            <ShieldCheck size={36} style={{ color: '#3b82f6' }} />
+            <h2 style={{ fontSize: '1.5rem', margin: 0, fontWeight: '600' }}>{authState === 'needs_setup' ? 'ตั้งรหัสผ่านระบบ' : 'เข้าสู่ระบบ'}</h2>
+          </div>
+          
+          {authState === 'needs_setup' && (
+            <p style={{ fontSize: '0.9rem', color: '#8b949e', marginBottom: '2rem', textAlign: 'center', lineHeight: '1.5' }}>
+              ระบบยังไม่มีรหัสผ่าน กรุณาตั้งรหัสผ่านสำหรับเข้าใช้งาน Dashboard (ตั้งครั้งเดียว)
+            </p>
+          )}
+
+          <form onSubmit={authState === 'needs_setup' ? handleSetup : handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            <div>
+              <input 
+                type="password" 
+                value={authPassword}
+                onChange={(e) => setAuthPassword(e.target.value)}
+                placeholder="รหัสผ่าน"
+                style={{ width: '100%', background: '#010409', border: '1px solid #30363d', borderRadius: '8px', padding: '0.85rem 1rem', color: 'white', boxSizing: 'border-box', outline: 'none', fontSize: '1rem', transition: 'border-color 0.2s' }}
+                onFocus={(e) => e.target.style.borderColor = '#3b82f6'}
+                onBlur={(e) => e.target.style.borderColor = '#30363d'}
+                autoFocus
+              />
+            </div>
+            
+            {authError && <p style={{ color: '#f85149', fontSize: '0.875rem', textAlign: 'center', margin: '0' }}>{authError}</p>}
+            
+            <button 
+              type="submit"
+              style={{ width: '100%', padding: '0.85rem', marginTop: '0.5rem', borderRadius: '8px', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.5rem', background: '#238636', border: 'none', color: 'white', fontWeight: 'bold', fontSize: '1rem', cursor: 'pointer', transition: 'background 0.2s' }}
+              onMouseOver={(e) => e.target.style.background = '#2ea043'}
+              onMouseOut={(e) => e.target.style.background = '#238636'}
+            >
+              {authState === 'needs_setup' ? 'ยืนยันรหัสผ่าน' : 'เข้าสู่ระบบ'}
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className={`container ${activeTab === 'chat' ? 'chat-active' : ''}`}>
       {/* Header */}
@@ -1023,6 +1199,10 @@ function App() {
 
           <button className="primary" onClick={() => setShowSettings(true)}>
             <Settings size={18} /> <span className="btn-label">Settings</span>
+          </button>
+          
+          <button className="secondary" onClick={handleLogout} title="Logout" style={{ marginLeft: '8px', color: '#f85149', borderColor: '#490202', background: 'transparent' }}>
+            <LogOut size={18} /> <span className="btn-label">Logout</span>
           </button>
         </div>
       </header>
@@ -1987,6 +2167,38 @@ function App() {
               <span>API Keys are saved securely to a JSON file on the server and synced with LocalStorage</span>
             </div>
 
+            <h3 style={{ marginTop: '0', marginBottom: '1rem', borderBottom: '1px solid #30363d', paddingBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '1.1rem' }}>
+              <ShieldCheck size={18} /> เปลี่ยนรหัสผ่าน Dashboard
+            </h3>
+            <form onSubmit={handleChangePassword} style={{ marginBottom: '2rem' }}>
+              <div className="form-group">
+                <label>รหัสผ่านปัจจุบัน</label>
+                <input 
+                  type="password" 
+                  value={currentPassword} 
+                  onChange={e => setCurrentPassword(e.target.value)} 
+                  placeholder="รหัสผ่านปัจจุบัน..."
+                />
+              </div>
+              <div className="form-group" style={{ display: 'flex', gap: '1rem', alignItems: 'flex-end' }}>
+                <div style={{ flex: 1 }}>
+                  <label>รหัสผ่านใหม่</label>
+                  <input 
+                    type="password" 
+                    value={newPassword} 
+                    onChange={e => setNewPassword(e.target.value)} 
+                    placeholder="รหัสผ่านใหม่..."
+                  />
+                </div>
+                <button type="submit" className="primary" style={{ height: '42px', padding: '0 1.5rem', background: '#238636', borderColor: 'transparent' }}>
+                  เปลี่ยนรหัสผ่าน
+                </button>
+              </div>
+            </form>
+
+            <h3 style={{ marginTop: '1.5rem', marginBottom: '1rem', borderBottom: '1px solid #30363d', paddingBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '1.1rem' }}>
+              <Settings size={18} /> API Keys & Configuration
+            </h3>
             <form onSubmit={handleSaveKeys}>
               <div className="form-group">
                 <label>DeepSeek API Key</label>
