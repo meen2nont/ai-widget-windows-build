@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node server.js",
     "dev": "vite",
-    "build": "vite build",
+    "build": "vite build --emptyOutDir",
     "lint": "oxlint",
     "preview": "vite preview"
   },
