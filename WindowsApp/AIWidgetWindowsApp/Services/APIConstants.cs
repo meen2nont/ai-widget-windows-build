@@ -13,7 +13,6 @@ namespace AIWidgetWindowsApp.Services
 
         public static class Ollama
         {
-            public const string DefaultHost = "http://localhost:11434";
             public const string UsageURL = "https://ollama.com/api/usage";
             public const string SettingsURL = "https://ollama.com/settings";
             public const int LowSessionQuotaThresholdPercent = 15;

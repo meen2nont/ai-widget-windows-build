@@ -21,12 +21,6 @@
     </UserControl.Resources>
 
     <StackPanel>
-        <ComboBox ItemsSource="{Binding CloudModels}" 
-                  SelectedItem="{Binding SelectedOllamaModel, Mode=TwoWay}"
-                  DisplayMemberPath="DisplayName"
-                  SelectedValuePath="Name"
-                  Margin="0,0,0,10"/>
-                  
         <!-- Session Usage Bar -->
         <TextBlock Text="Session usage" Foreground="White" FontSize="11" Margin="0,0,0,2"/>
         <ProgressBar Style="{StaticResource NeutralProgressBar}" 
@@ -41,17 +35,5 @@
                      Height="6" Margin="0,0,0,2"/>
         <TextBlock Text="{Binding WeeklyUsagePercent, StringFormat={}{0:F1}% used}" Foreground="White" FontSize="10" HorizontalAlignment="Right" Margin="0,-15,0,10"/>
         
-        <TextBox Text="{Binding PromptText, UpdateSourceTrigger=PropertyChanged}" 
-                 Height="60" TextWrapping="Wrap" AcceptsReturn="True" 
-                 Background="#2D2D2D" Foreground="White" BorderThickness="0"
-                 Margin="0,0,0,10" Padding="5"/>
-                 
-        <Button Content="Send" Command="{Binding SendCommand}" 
-                Background="#007ACC" Foreground="White" Padding="10,5" BorderThickness="0"
-                HorizontalAlignment="Right" Margin="0,0,0,10"/>
-                
-        <ScrollViewer Height="80">
-            <TextBlock Text="{Binding AiResponse}" Foreground="White" TextWrapping="Wrap"/>
-        </ScrollViewer>
     </StackPanel>
 </UserControl>

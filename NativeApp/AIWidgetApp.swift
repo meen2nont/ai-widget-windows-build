@@ -29,30 +29,53 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             guard let self = self else { return }
             let mode = UserDefaults.standard.string(forKey: "MenuBarDisplayMode") ?? "deepseek"
             
+            var newImage: NSImage? = nil
+            
             switch mode {
             case "deepseek":
+                let path = getAssetPath("deepseek_icon_menubar.png")
+                if let customImg = NSImage(contentsOfFile: path) {
+                    customImg.isTemplate = true
+                    customImg.size = NSSize(width: 16, height: 16)
+                    newImage = customImg
+                }
                 if let bal = self.latestDeepSeekBalance {
-                    self.statusItem?.button?.title = " ✨ $\(bal)"
+                    self.statusItem?.button?.title = " $\(bal)"
                 } else {
-                    self.statusItem?.button?.title = " ✨ DeepSeek"
+                    self.statusItem?.button?.title = " DeepSeek"
                 }
             case "ollama":
-                if let pct = self.latestOllamaPercent {
-                    self.statusItem?.button?.title = " ☁️ \(pct)%"
+                let path = getAssetPath("ollama.png")
+                if let customImg = NSImage(contentsOfFile: path) {
+                    customImg.isTemplate = true
+                    customImg.size = NSSize(width: 16, height: 16)
+                    newImage = customImg
                 } else {
-                    self.statusItem?.button?.title = " ☁️ Ollama"
+                    newImage = NSImage(systemSymbolName: "cloud.fill", accessibilityDescription: "Ollama")
+                }
+                if let pct = self.latestOllamaPercent {
+                    self.statusItem?.button?.title = " \(pct)%"
+                } else {
+                    self.statusItem?.button?.title = " Ollama"
                 }
             case "ollamapay":
+                newImage = NSImage(systemSymbolName: "creditcard.fill", accessibilityDescription: "Ollama Pay")
                 if let str = self.latestOllamaPayStr {
-                    self.statusItem?.button?.title = " 💳 \(str)"
+                    self.statusItem?.button?.title = " \(str)"
                 } else {
-                    self.statusItem?.button?.title = " 💳 Pay"
+                    self.statusItem?.button?.title = " Pay"
                 }
             case "default":
                 fallthrough
             default:
+                newImage = NSImage(systemSymbolName: "sparkles", accessibilityDescription: "AI Widget")
                 self.statusItem?.button?.title = " AI Widget"
             }
+            
+            if newImage == nil {
+                newImage = NSImage(systemSymbolName: "sparkles", accessibilityDescription: "AI Widget")
+            }
+            self.statusItem?.button?.image = newImage
         }
     }
     

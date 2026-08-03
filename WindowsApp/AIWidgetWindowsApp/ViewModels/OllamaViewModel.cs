@@ -41,34 +41,15 @@ namespace AIWidgetWindowsApp.ViewModels
         [ObservableProperty]
         private string cloudCost = "$0.00";
 
-        public ObservableCollection<OllamaModelItem> CloudModels { get; } = new ObservableCollection<OllamaModelItem>();
 
-        [ObservableProperty]
-        private string selectedOllamaModel = string.Empty;
 
         [ObservableProperty]
         private bool isAvailable = false;
-
-        [ObservableProperty]
-        private int latencyMs = 0;
-
-        [ObservableProperty]
-        private string lastTokenInfo = string.Empty;
-
+        
         [ObservableProperty]
         private bool isLoading = false;
 
-        [ObservableProperty]
-        private bool isGenerating = false;
 
-        [ObservableProperty]
-        private string promptText = string.Empty;
-
-        [ObservableProperty]
-        private string aiResponse = string.Empty;
-
-        [ObservableProperty]
-        private bool copySuccess = false;
 
         public double SessionRemainingPercent => Math.Max(0, 100.0 - SessionUsagePercent);
         public double WeeklyRemainingPercent => Math.Max(0, 100.0 - WeeklyUsagePercent);
@@ -83,7 +64,6 @@ namespace AIWidgetWindowsApp.ViewModels
         public async Task FetchDataAsync()
         {
             IsLoading = true;
-            await FetchOllamaModelsAsync();
             await FetchOllamaCloudUsageAsync();
             IsLoading = false;
         }
@@ -101,6 +81,7 @@ namespace AIWidgetWindowsApp.ViewModels
 
                 if (response.IsSuccessStatusCode)
                 {
+                    IsAvailable = true;
                     var json = await response.Content.ReadAsStringAsync();
                     var res = JsonSerializer.Deserialize<OllamaUsageResponse>(json);
 
@@ -127,130 +108,11 @@ namespace AIWidgetWindowsApp.ViewModels
             }
             catch (Exception)
             {
-                // Silent fail for usage fetch
-            }
-        }
-
-        private async Task FetchOllamaModelsAsync()
-        {
-            var stopwatch = Stopwatch.StartNew();
-
-            try
-            {
-                var request = new HttpRequestMessage(HttpMethod.Get, $"{APIConstants.Ollama.DefaultHost}/api/tags");
-                if (!string.IsNullOrWhiteSpace(OllamaApiKey))
-                {
-                    request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", OllamaApiKey);
-                }
-
-                var response = await _httpClient.SendAsync(request);
-                stopwatch.Stop();
-                LatencyMs = (int)stopwatch.ElapsedMilliseconds;
-
-                if (response.IsSuccessStatusCode)
-                {
-                    IsAvailable = true;
-                    var json = await response.Content.ReadAsStringAsync();
-                    var res = JsonSerializer.Deserialize<OllamaTagsResponse>(json);
-
-                    if (res?.Models != null)
-                    {
-                        CloudModels.Clear();
-                        var cloudOnly = res.Models.Where(m => m.IsCloud).ToList();
-                        var source = cloudOnly.Any() ? cloudOnly : res.Models;
-                        
-                        foreach (var model in source)
-                        {
-                            CloudModels.Add(model);
-                        }
-
-                        if (string.IsNullOrEmpty(SelectedOllamaModel) || !source.Any(m => m.Name == SelectedOllamaModel))
-                        {
-                            SelectedOllamaModel = source.FirstOrDefault()?.Name ?? string.Empty;
-                        }
-                    }
-                }
-                else
-                {
-                    IsAvailable = false;
-                }
-            }
-            catch (Exception)
-            {
                 IsAvailable = false;
             }
         }
 
-        [RelayCommand]
-        public async Task SendPromptAsync()
-        {
-            if (string.IsNullOrWhiteSpace(PromptText) || string.IsNullOrWhiteSpace(SelectedOllamaModel)) return;
 
-            IsGenerating = true;
-            var stopwatch = Stopwatch.StartNew();
-
-            try
-            {
-                var request = new HttpRequestMessage(HttpMethod.Post, $"{APIConstants.Ollama.DefaultHost}/api/chat");
-                if (!string.IsNullOrWhiteSpace(OllamaApiKey))
-                {
-                    request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", OllamaApiKey);
-                }
-
-                var body = new
-                {
-                    model = SelectedOllamaModel,
-                    messages = new[] { new { role = "user", content = PromptText } },
-                    stream = false
-                };
-
-                request.Content = new StringContent(JsonSerializer.Serialize(body), Encoding.UTF8, "application/json");
-
-                var response = await _httpClient.SendAsync(request);
-                stopwatch.Stop();
-                LatencyMs = (int)stopwatch.ElapsedMilliseconds;
-
-                if (response.IsSuccessStatusCode)
-                {
-                    var json = await response.Content.ReadAsStringAsync();
-                    var chatResponse = JsonSerializer.Deserialize<OllamaChatResponse>(json);
-                    
-                    if (chatResponse?.Message != null)
-                    {
-                        AiResponse = chatResponse.Message.Content ?? "";
-                        PromptText = string.Empty;
-                        
-                        if (chatResponse.EvalCount.HasValue)
-                        {
-                            LastTokenInfo = $"{chatResponse.PromptEvalCount ?? 0} in / {chatResponse.EvalCount} out tokens";
-                        }
-                        
-                        _ = FetchOllamaCloudUsageAsync();
-                    }
-                }
-                else
-                {
-                    AiResponse = "Error getting response from Ollama.";
-                }
-            }
-            catch (Exception ex)
-            {
-                AiResponse = $"Error: {ex.Message}";
-            }
-            finally
-            {
-                IsGenerating = false;
-            }
-        }
-
-        [RelayCommand]
-        public async Task CopyToClipboardAsync()
-        {
-            Clipboard.SetText(AiResponse);
-            CopySuccess = true;
-            await Task.Delay(2000);
-            CopySuccess = false;
-        }
 
         private void UpdateMainWindow(string value)
         {

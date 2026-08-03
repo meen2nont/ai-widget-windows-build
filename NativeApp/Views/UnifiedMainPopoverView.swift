@@ -4,14 +4,22 @@ import AppKit
 struct TabPillButton: View {
     let title: String
     let icon: String
+    var customIconPath: String? = nil
     let isSelected: Bool
     let action: () -> Void
     
     var body: some View {
         Button(action: action) {
             HStack(spacing: 4) {
-                Image(systemName: icon)
-                    .font(.system(size: 10, weight: .bold))
+                if let path = customIconPath, let img = NSImage(contentsOfFile: path) {
+                    Image(nsImage: img)
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 14, height: 14)
+                } else {
+                    Image(systemName: icon)
+                        .font(.system(size: 10, weight: .bold))
+                }
                 Text(title)
                     .font(.system(size: 11, weight: isSelected ? .bold : .medium))
                     .lineLimit(1)
@@ -118,8 +126,8 @@ struct UnifiedMainPopoverView: View {
             
             HStack(spacing: 6) {
                 TabPillButton(title: "Overview", icon: "square.grid.2x2.fill", isSelected: selectedTab == 0) { changeTab(to: 0) }
-                TabPillButton(title: "DeepSeek", icon: "sparkles", isSelected: selectedTab == 1) { changeTab(to: 1) }
-                TabPillButton(title: "Ollama", icon: "cloud.fill", isSelected: selectedTab == 2) { changeTab(to: 2) }
+                TabPillButton(title: "DeepSeek", icon: "sparkles", customIconPath: getAssetPath("deepseek_icon.png"), isSelected: selectedTab == 1) { changeTab(to: 1) }
+                TabPillButton(title: "Ollama", icon: "cloud.fill", customIconPath: getAssetPath("ollama.png"), isSelected: selectedTab == 2) { changeTab(to: 2) }
                 TabPillButton(title: "Pay", icon: "creditcard.fill", isSelected: selectedTab == 3) { changeTab(to: 3) }
             }
             
@@ -265,7 +273,7 @@ struct UnifiedMainPopoverView: View {
             Button(action: { changeTab(to: 2) }) {
                 HStack {
                     HStack(spacing: 6) {
-                        let iconPath = getAssetPath("ollama_icon.png")
+                        let iconPath = getAssetPath("ollama.png")
                         if let olImg = NSImage(contentsOfFile: iconPath) {
                             Image(nsImage: olImg)
                                 .resizable()

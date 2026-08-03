@@ -10,7 +10,6 @@ struct APIConstants {
     }
     
     struct Ollama {
-        static let defaultHost = "http://localhost:11434"
         static let usageURL = "https://ollama.com/api/usage"
         static let settingsURL = "https://ollama.com/settings"
         static let lowSessionQuotaThresholdPercent: Int = 15

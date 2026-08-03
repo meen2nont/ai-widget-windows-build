@@ -15,7 +15,7 @@ struct OllamaPopoverView: View {
             // Streamlined Header (Logo + Title + Status Badge)
             HStack {
                 HStack(spacing: 8) {
-                    let iconPath = getAssetPath("ollama_icon.png")
+                    let iconPath = getAssetPath("ollama.png")
                     if let officialImg = NSImage(contentsOfFile: iconPath) {
                         Image(nsImage: officialImg)
                             .resizable()
@@ -139,7 +139,7 @@ struct OllamaPopoverView: View {
                     Image(systemName: "bolt.fill")
                         .font(.system(size: 9))
                         .foregroundColor(.green)
-                    Text("\(vm.latencyMs)ms" + (vm.lastTokenInfo.isEmpty ? "" : " • \(vm.lastTokenInfo)"))
+                    Text("API Active")
                         .font(.system(size: 10))
                         .foregroundColor(.secondary)
                 }
