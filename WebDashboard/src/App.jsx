@@ -199,6 +199,26 @@ function App() {
   );
 
   const [activeTab, setActiveTab] = useState('overview'); // 'overview' | 'chat' | 'details'
+  const [activeCardIndex, setActiveCardIndex] = useState(0);
+  const carouselRef = useRef(null);
+
+  const handleCarouselScroll = () => {
+    if (!carouselRef.current) return;
+    const el = carouselRef.current;
+    if (el.clientWidth === 0) return;
+    const index = Math.round(el.scrollLeft / el.clientWidth);
+    if (index !== activeCardIndex && index >= 0 && index <= 2) {
+      setActiveCardIndex(index);
+    }
+  };
+
+  const scrollToCard = (index) => {
+    if (!carouselRef.current) return;
+    const el = carouselRef.current;
+    el.scrollTo({ left: index * el.clientWidth, behavior: 'smooth' });
+    setActiveCardIndex(index);
+  };
+
   const [showSettings, setShowSettings] = useState(false);
   const [loading, setLoading] = useState(false);
   const [lastRefreshed, setLastRefreshed] = useState(new Date());
@@ -312,6 +332,7 @@ function App() {
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [confirmDeleteSession, setConfirmDeleteSession] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
+  const [showMobileChatSettings, setShowMobileChatSettings] = useState(false);
   const chatEndRef = useRef(null);
   const fileInputRef = useRef(null);
   const abortRef = useRef(null);
@@ -982,8 +1003,8 @@ function App() {
       {/* Header */}
       <header>
         <div className="brand-title">
-          <Activity size={26} style={{ color: '#2f81f7' }} />
-          <h1>AI Service Monitoring</h1>
+          <Activity size={26} style={{ color: 'var(--accent-blue)' }} />
+          <h1>AI Service Monitoring <span className="build-tag">v1.0.0</span></h1>
         </div>
 
         <div className="header-actions">
@@ -992,9 +1013,7 @@ function App() {
             <span>Last updated {lastRefreshed.toLocaleTimeString('en-US', { timeZone: 'Asia/Bangkok' })}</span>
           </div>
 
-          <button className="secondary" onClick={() => copyStatsToClipboard()} title="Copy Markdown Summary">
-            <Copy size={18} /> <span className="btn-label">Export</span>
-          </button>
+
 
           <button className="secondary" onClick={() => fetchData()} title="Refresh Data">
             <RefreshCw size={18} className={loading ? 'loading' : ''} />
@@ -1042,7 +1061,7 @@ function App() {
 
         <div className="summary-card">
           <div className="summary-icon-box emerald">
-            <DeepSeekIcon size={24} style={{ color: '#34d399' }} />
+            <DeepSeekIcon size={24} style={{ color: 'var(--status-green)' }} />
           </div>
           <div>
             <div className="summary-label">DeepSeek Balance</div>
@@ -1052,7 +1071,7 @@ function App() {
 
         <div className="summary-card">
           <div className="summary-icon-box cyan">
-            <OllamaIcon size={24} style={{ color: '#38bdf8' }} />
+            <OllamaIcon size={24} style={{ color: 'var(--accent-blue)' }} />
           </div>
           <div>
             <div className="summary-label">Ollama Session</div>
@@ -1062,7 +1081,7 @@ function App() {
 
         <div className="summary-card">
           <div className="summary-icon-box amber">
-            <OllamaPayIcon size={24} style={{ color: '#fbbf24' }} />
+            <OllamaPayIcon size={24} style={{ color: 'var(--status-amber)' }} />
           </div>
           <div>
             <div className="summary-label">Ollama Pay Today</div>
@@ -1073,134 +1092,293 @@ function App() {
 
       {/* TAB 1: OVERVIEW */}
       {activeTab === 'overview' && (
-        <div className="grid">
-          {/* DeepSeek Card */}
-          <div className="glass-card">
-            <div className="card-header">
-              <div className="card-title-group">
-                <DeepSeekIcon size={24} style={{ color: '#818cf8' }} />
-                <h2 className="card-title">DeepSeek AI</h2>
+        <div className="overview-tab-container">
+          <div className="overview-carousel-wrapper">
+            <div 
+              className="grid overview-carousel"
+              ref={carouselRef}
+              onScroll={handleCarouselScroll}
+            >
+              {/* DeepSeek Card */}
+              <div className="glass-card overview-card">
+                <div className="card-header">
+                  <div className="card-title-group">
+                    <DeepSeekIcon size={24} style={{ color: 'var(--status-indigo)' }} />
+                    <h2 className="card-title">DeepSeek AI</h2>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <span className="latency-tag">{data.deepseek.latencyMs} ms</span>
+                    {data.deepseek.available ? 
+                      <span className="badge success"><CheckCircle2 size={12} /> Online</span> : 
+                      <span className="badge error"><XCircle size={12} /> Offline</span>
+                    }
+                  </div>
+                </div>
+
+                <div className="metric-row">
+                  <div>
+                    <div className="stat-label">Available Balance</div>
+                    <div className="metric-value-huge">${data.deepseek.balance} <span style={{fontSize: '1rem', color: 'var(--text-muted)'}}>{data.deepseek.currency}</span></div>
+                  </div>
+                </div>
+
+                <div className="sub-grid">
+                  <div className="sub-stat-box">
+                    <div className="sub-stat-label">Spent Today (Est.)</div>
+                    <div className="sub-stat-value">${data.deepseek.spentToday}</div>
+                  </div>
+                  <div className="sub-stat-box">
+                    <div className="sub-stat-label">Model</div>
+                    <div className="sub-stat-value" style={{fontSize: '0.9rem'}}>deepseek-chat</div>
+                  </div>
+                </div>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <span className="latency-tag">{data.deepseek.latencyMs} ms</span>
-                {data.deepseek.available ? 
-                  <span className="badge success"><CheckCircle2 size={12} /> Online</span> : 
-                  <span className="badge error"><XCircle size={12} /> Offline</span>
-                }
+
+              {/* Ollama Cloud Card */}
+              <div className="glass-card overview-card">
+                <div className="card-header">
+                  <div className="card-title-group">
+                    <OllamaIcon size={24} style={{ color: 'var(--accent-blue)' }} />
+                    <h2 className="card-title">Ollama Cloud</h2>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <span className="latency-tag">{data.ollama.latencyMs} ms</span>
+                    {data.ollama.available ? 
+                      <span className="badge success"><CheckCircle2 size={12} /> Online</span> : 
+                      <span className="badge error"><XCircle size={12} /> Offline</span>
+                    }
+                  </div>
+                </div>
+
+                <div className="progress-container">
+                  <div className="progress-header">
+                    <span>5-Hour Session Quota Used</span>
+                    <span style={{ fontWeight: 700, color: data.ollama.sessionPercent > 85 ? 'var(--accent-rose)' : 'white' }}>
+                      {data.ollama.sessionPercent.toFixed(1)}%
+                    </span>
+                  </div>
+                  <div className="progress-track">
+                    <div 
+                      className={`progress-fill ${data.ollama.sessionPercent > 85 ? 'amber' : 'indigo'}`} 
+                      style={{ transform: `scaleX(${Math.min(data.ollama.sessionPercent, 100) / 100})` }} 
+                    />
+                  </div>
+                </div>
+
+                <div className="progress-container">
+                  <div className="progress-header">
+                    <span>Weekly Limit Used</span>
+                    <span>{data.ollama.weeklyPercent.toFixed(1)}%</span>
+                  </div>
+                  <div className="progress-track">
+                    <div className="progress-fill emerald" style={{ transform: `scaleX(${Math.min(data.ollama.weeklyPercent, 100) / 100})` }} />
+                  </div>
+                </div>
+              </div>
+
+              {/* Ollama Pay Card */}
+              <div className="glass-card overview-card">
+                <div className="card-header">
+                  <div className="card-title-group">
+                    <OllamaPayIcon size={24} style={{ color: 'var(--status-amber)' }} />
+                    <h2 className="card-title">Ollama Pay</h2>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <span className="latency-tag">{data.ollamaPay.latencyMs} ms</span>
+                    {data.ollamaPay.available ? 
+                      <span className="badge success"><CheckCircle2 size={12} /> Online</span> : 
+                      <span className="badge error"><XCircle size={12} /> Offline</span>
+                    }
+                  </div>
+                </div>
+
+                <div className="metric-row">
+                  <div>
+                    <div className="stat-label">Tokens Remaining</div>
+                    <div className="metric-value-huge">{formatCompact(data.ollamaPay.tokensRemaining)}</div>
+                  </div>
+                </div>
+
+                <div className="progress-container">
+                  <div className="progress-header">
+                    <span>Quota Remaining</span>
+                    <span>
+                      {data.ollamaPay.totalTokens ? ((data.ollamaPay.tokensRemaining / data.ollamaPay.totalTokens) * 100).toFixed(1) : 0}%
+                    </span>
+                  </div>
+                  <div className="progress-track">
+                    <div className="progress-fill amber" style={{ 
+                      transform: `scaleX(${data.ollamaPay.totalTokens ? (data.ollamaPay.tokensRemaining / data.ollamaPay.totalTokens) : 0})` 
+                    }} />
+                  </div>
+                </div>
+
+                <div className="sub-grid">
+                  <div className="sub-stat-box">
+                    <div className="sub-stat-label">Today Tokens</div>
+                    <div className="sub-stat-value">{formatCompact(data.ollamaPay.todayTokens)}</div>
+                  </div>
+                  <div className="sub-stat-box">
+                    <div className="sub-stat-label">Month Tokens</div>
+                    <div className="sub-stat-value">{formatCompact(data.ollamaPay.monthTokens)}</div>
+                  </div>
+                </div>
               </div>
             </div>
 
-            <div className="metric-row">
-              <div>
-                <div className="stat-label">Available Balance</div>
-                <div className="metric-value-huge">${data.deepseek.balance} <span style={{fontSize: '1rem', color: 'var(--text-muted)'}}>{data.deepseek.currency}</span></div>
-              </div>
-            </div>
-
-            <div className="sub-grid">
-              <div className="sub-stat-box">
-                <div className="sub-stat-label">Spent Today (Est.)</div>
-                <div className="sub-stat-value">${data.deepseek.spentToday}</div>
-              </div>
-              <div className="sub-stat-box">
-                <div className="sub-stat-label">Model</div>
-                <div className="sub-stat-value" style={{fontSize: '0.9rem'}}>deepseek-chat</div>
-              </div>
+            {/* Mobile Swipe Indicators / Card Switcher Dots */}
+            <div className="carousel-dots-mobile">
+              <button 
+                type="button" 
+                className={`carousel-dot-btn ${activeCardIndex === 0 ? 'active' : ''}`}
+                onClick={() => scrollToCard(0)}
+              >
+                <span className="dot-pip"></span>
+                <span>DeepSeek</span>
+              </button>
+              <button 
+                type="button" 
+                className={`carousel-dot-btn ${activeCardIndex === 1 ? 'active' : ''}`}
+                onClick={() => scrollToCard(1)}
+              >
+                <span className="dot-pip"></span>
+                <span>Ollama Cloud</span>
+              </button>
+              <button 
+                type="button" 
+                className={`carousel-dot-btn ${activeCardIndex === 2 ? 'active' : ''}`}
+                onClick={() => scrollToCard(2)}
+              >
+                <span className="dot-pip"></span>
+                <span>Ollama Pay</span>
+              </button>
             </div>
           </div>
 
-          {/* Ollama Cloud Card */}
-          <div className="glass-card">
-            <div className="card-header">
+        {/* Bottom Row: Quick AI Starters & Recent Activity Logs */}
+        <div className="overview-bottom-grid">
+          {/* Quick AI Starters Card */}
+          <div className="glass-card overview-quick-starters">
+            <div className="card-header" style={{ marginBottom: '0.6rem' }}>
               <div className="card-title-group">
-                <OllamaIcon size={24} style={{ color: '#38bdf8' }} />
-                <h2 className="card-title">Ollama Cloud</h2>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <span className="latency-tag">{data.ollama.latencyMs} ms</span>
-                {data.ollama.available ? 
-                  <span className="badge success"><CheckCircle2 size={12} /> Online</span> : 
-                  <span className="badge error"><XCircle size={12} /> Offline</span>
-                }
+                <BookOpen size={16} style={{ color: 'var(--accent-blue)' }} />
+                <h3 className="card-title" style={{ fontSize: '0.92rem', margin: 0 }}>ทางลัดเริ่มแชทด่วน (Quick Starters)</h3>
               </div>
             </div>
-
-            <div className="progress-container">
-              <div className="progress-header">
-                <span>5-Hour Session Quota Used</span>
-                <span style={{ fontWeight: 700, color: data.ollama.sessionPercent > 85 ? 'var(--accent-rose)' : 'white' }}>
-                  {data.ollama.sessionPercent.toFixed(1)}%
-                </span>
-              </div>
-              <div className="progress-track">
-                <div 
-                  className={`progress-fill ${data.ollama.sessionPercent > 85 ? 'amber' : 'indigo'}`} 
-                  style={{ transform: `scaleX(${Math.min(data.ollama.sessionPercent, 100) / 100})` }} 
-                />
-              </div>
-            </div>
-
-            <div className="progress-container">
-              <div className="progress-header">
-                <span>Weekly Limit Used</span>
-                <span>{data.ollama.weeklyPercent.toFixed(1)}%</span>
-              </div>
-              <div className="progress-track">
-                <div className="progress-fill emerald" style={{ transform: `scaleX(${Math.min(data.ollama.weeklyPercent, 100) / 100})` }} />
-              </div>
+            <div className="quick-starters-grid">
+              {templates.slice(0, 4).map(t => {
+                const Icon = TEMPLATE_ICONS[t.id] || FileText;
+                return (
+                  <button
+                    key={t.id}
+                    type="button"
+                    className="quick-starter-btn"
+                    onClick={() => {
+                      setActiveTab('chat');
+                      setChatPane('chat');
+                      const newSession = {
+                        id: 'sess_' + Date.now(),
+                        title: t.name,
+                        messages: [{ role: 'user', content: t.prompt }]
+                      };
+                      const updated = [newSession, ...sessions];
+                      saveSessions(updated);
+                      setActiveSessionId(newSession.id);
+                    }}
+                  >
+                    <span className="starter-icon"><Icon size={15} /></span>
+                    <span className="starter-name">{t.name}</span>
+                  </button>
+                );
+              })}
             </div>
           </div>
 
-          {/* Ollama Pay Card */}
-          <div className="glass-card">
-            <div className="card-header">
+          {/* Recent Activity & Sessions Card */}
+          <div className="glass-card overview-recent-activity">
+            <div className="card-header" style={{ marginBottom: '0.6rem' }}>
               <div className="card-title-group">
-                <OllamaPayIcon size={24} style={{ color: '#fbbf24' }} />
-                <h2 className="card-title">Ollama Pay</h2>
+                <Clock size={16} style={{ color: 'var(--status-purple)' }} />
+                <h3 className="card-title" style={{ fontSize: '0.92rem', margin: 0 }}>บทสนทนาล่าสุด (Recent Activity)</h3>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <span className="latency-tag">{data.ollamaPay.latencyMs} ms</span>
-                {data.ollamaPay.available ? 
-                  <span className="badge success"><CheckCircle2 size={12} /> Online</span> : 
-                  <span className="badge error"><XCircle size={12} /> Offline</span>
-                }
+              <button
+                type="button"
+                className="secondary"
+                style={{ padding: '0.2rem 0.5rem', fontSize: '0.72rem' }}
+                onClick={() => { setActiveTab('chat'); setChatPane('history'); }}
+              >
+                ดูทั้งหมด
+              </button>
+            </div>
+            <div className="recent-activity-list">
+              {sessions.slice(0, 3).map(s => (
+                <div
+                  key={s.id}
+                  className="recent-activity-item"
+                  onClick={() => { setActiveTab('chat'); setChatPane('chat'); setActiveSessionId(s.id); }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', overflow: 'hidden' }}>
+                    <MessageSquare size={13} style={{ color: 'var(--accent-blue)', flexShrink: 0 }} />
+                    <span className="activity-title">{s.title}</span>
+                  </div>
+                  <span className="activity-badge">{s.messages.length} ข้อความ</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Real-time Latency Chart Card */}
+          <div className="glass-card overview-latency-chart">
+            <div className="card-header" style={{ marginBottom: '0.6rem' }}>
+              <div className="card-title-group">
+                <Activity size={16} style={{ color: 'var(--status-green)' }} />
+                <h3 className="card-title" style={{ fontSize: '0.92rem', margin: 0 }}>ความเร็วการตอบสนอง (Latency)</h3>
               </div>
             </div>
+            <div className="latency-chart-list">
+              <div className="latency-bar-item">
+                <div className="latency-item-header">
+                  <span className="latency-service-name">DeepSeek API</span>
+                  <span className="latency-ms-val">{data.deepseek.latencyMs} ms</span>
+                </div>
+                <div className="progress-track" style={{ height: '6px' }}>
+                  <div
+                    className="progress-fill emerald"
+                    style={{ transform: `scaleX(${Math.min(1, Math.max(0.08, data.deepseek.latencyMs / 1000))})` }}
+                  />
+                </div>
+              </div>
 
-            <div className="metric-row">
-              <div>
-                <div className="stat-label">Tokens Remaining</div>
-                <div className="metric-value-huge">{formatCompact(data.ollamaPay.tokensRemaining)}</div>
+              <div className="latency-bar-item">
+                <div className="latency-item-header">
+                  <span className="latency-service-name">Ollama Cloud</span>
+                  <span className="latency-ms-val">{data.ollama.latencyMs} ms</span>
+                </div>
+                <div className="progress-track" style={{ height: '6px' }}>
+                  <div
+                    className="progress-fill cyan"
+                    style={{ transform: `scaleX(${Math.min(1, Math.max(0.08, data.ollama.latencyMs / 1000))})` }}
+                  />
+                </div>
               </div>
-            </div>
 
-            <div className="progress-container">
-              <div className="progress-header">
-                <span>Quota Remaining</span>
-                <span>
-                  {data.ollamaPay.totalTokens ? ((data.ollamaPay.tokensRemaining / data.ollamaPay.totalTokens) * 100).toFixed(1) : 0}%
-                </span>
-              </div>
-              <div className="progress-track">
-                <div className="progress-fill amber" style={{ 
-                  transform: `scaleX(${data.ollamaPay.totalTokens ? (data.ollamaPay.tokensRemaining / data.ollamaPay.totalTokens) : 0})` 
-                }} />
-              </div>
-            </div>
-
-            <div className="sub-grid">
-              <div className="sub-stat-box">
-                <div className="sub-stat-label">Today Tokens</div>
-                <div className="sub-stat-value">{formatCompact(data.ollamaPay.todayTokens)}</div>
-              </div>
-              <div className="sub-stat-box">
-                <div className="sub-stat-label">Month Tokens</div>
-                <div className="sub-stat-value">{formatCompact(data.ollamaPay.monthTokens)}</div>
+              <div className="latency-bar-item">
+                <div className="latency-item-header">
+                  <span className="latency-service-name">Ollama Pay</span>
+                  <span className="latency-ms-val">{data.ollamaPay.latencyMs} ms</span>
+                </div>
+                <div className="progress-track" style={{ height: '6px' }}>
+                  <div
+                    className="progress-fill amber"
+                    style={{ transform: `scaleX(${Math.min(1, Math.max(0.08, data.ollamaPay.latencyMs / 1000))})` }}
+                  />
+                </div>
               </div>
             </div>
           </div>
         </div>
-      )}
+      </div>
+    )}
 
       {/* TAB 2: AI CHAT PLAYGROUND */}
       {activeTab === 'chat' && (
@@ -1276,34 +1454,63 @@ function App() {
               <div className="chat-header-bar">
                 <div className="chat-header-title-row">
                   <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '1.1rem' }}>
-                    <MessageSquare size={20} style={{ color: '#38bdf8' }} /> {currentSession.title}
+                    <MessageSquare size={20} style={{ color: 'var(--accent-blue)' }} /> {currentSession.title}
                   </h3>
-                    {/* Feature 5: Multi-format Export */}
-                  <div style={{ position: 'relative', display: 'inline-block' }} className="export-dropdown-wrapper">
-                    <button type="button" className="secondary" style={{ padding: '0.3rem 0.65rem', fontSize: '0.78rem', display: 'flex', alignItems: 'center', gap: '0.3rem' }}
-                      onClick={() => setExportOpen(o => !o)}
-                      aria-expanded={exportOpen}
-                      aria-haspopup="menu"
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                    {/* Mobile Settings Toggle Button */}
+                    <button
+                      type="button"
+                      className={`mobile-settings-toggle ${showMobileChatSettings ? 'active' : ''}`}
+                      onClick={() => setShowMobileChatSettings(s => !s)}
+                      title="ตั้งค่าโมเดลและเครื่องมือ"
+                      aria-label="ตั้งค่าโมเดลและเครื่องมือ"
                     >
-                      <Download size={14} /> ส่งออก <ChevronDown size={12} />
+                      <Settings size={14} />
+                      <span>ตั้งค่า</span>
+                      <ChevronDown size={12} style={{ transform: showMobileChatSettings ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
                     </button>
-                    {exportOpen && (
-                      <>
-                        <div className="dropdown-backdrop" onClick={() => setExportOpen(false)} />
-                        <div role="menu" className="export-dropdown" onClick={() => setExportOpen(false)}>
-                          {EXPORT_FORMATS.map(({ fmt, icon: Icon, label }) => (
-                            <button key={fmt} type="button" role="menuitem" className="export-dropdown-item" onClick={() => exportAs(fmt)}>
-                              <span className="custom-select-option-icon"><Icon size={13} /></span>{label}
-                            </button>
-                          ))}
-                        </div>
-                      </>
-                    )}
+
+                    {/* Feature 5: Multi-format Export */}
+                    <div style={{ position: 'relative', display: 'inline-block' }} className="export-dropdown-wrapper">
+                      <button type="button" className="secondary" style={{ padding: '0.3rem 0.65rem', fontSize: '0.78rem', display: 'flex', alignItems: 'center', gap: '0.3rem' }}
+                        onClick={() => setExportOpen(o => !o)}
+                        aria-expanded={exportOpen}
+                        aria-haspopup="menu"
+                      >
+                        <Download size={14} /> ส่งออก <ChevronDown size={12} />
+                      </button>
+                      {exportOpen && (
+                        <>
+                          <div className="dropdown-backdrop" onClick={() => setExportOpen(false)} />
+                          <div role="menu" className="export-dropdown" onClick={() => setExportOpen(false)}>
+                            {EXPORT_FORMATS.map(({ fmt, icon: Icon, label }) => (
+                              <button key={fmt} type="button" role="menuitem" className="export-dropdown-item" onClick={() => exportAs(fmt)}>
+                                <span className="custom-select-option-icon"><Icon size={13} /></span>{label}
+                              </button>
+                            ))}
+                          </div>
+                        </>
+                      )}
+                    </div>
                   </div>
                 </div>
 
+                {/* Mobile Compact Status Bar (shown when settings are collapsed on mobile) */}
+                {!showMobileChatSettings && (
+                  <div className="mobile-status-summary-bar" onClick={() => setShowMobileChatSettings(true)} title="แตะเพื่อปรับแต่งการตั้งค่าแชท">
+                    <div className="mobile-status-pill">
+                      <span className="model-label">{selectedModel}</span>
+                      <div className="active-feature-icons">
+                        {useTools && <span title="เครื่องมือเปิดอยู่" className="chip-mini amber"><Wrench size={11} /> เครื่องมือ</span>}
+                        {enableWebSearch && <span title="ค้นหาเว็บเปิดอยู่" className="chip-mini cyan"><Globe size={11} /> ค้นหาเว็บ</span>}
+                        {useMemory && <span title="ระบบความจำเปิดอยู่" className="chip-mini violet"><Brain size={11} /> ความจำ</span>}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {/* Controls & Model Selector */}
-                <div className="chat-toolbar">
+                <div className={`chat-toolbar ${showMobileChatSettings ? 'mobile-expanded' : ''}`}>
                   <div className="toolbar-group">
                     <span className="toolbar-group-label">บุคลิก</span>
                     <Dropdown
@@ -1564,7 +1771,7 @@ function App() {
               {attachedFiles.length > 0 && (
                 <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.5rem', padding: '0.4rem', background: 'rgba(22, 26, 33, 0.8)', borderRadius: '8px', border: '1px solid var(--panel-border)' }}>
                   {attachedFiles.map((file, i) => (
-                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', background: file.type.startsWith('image/') ? 'rgba(56,189,248,0.12)' : 'rgba(167, 139, 250, 0.15)', border: `1px solid ${file.type.startsWith('image/') ? 'rgba(56,189,248,0.3)' : 'rgba(167, 139, 250, 0.3)'}`, padding: '0.25rem 0.65rem', borderRadius: '6px', fontSize: '0.8rem', color: file.type.startsWith('image/') ? '#38bdf8' : '#c4b5fd' }}>
+                    <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', background: file.type.startsWith('image/') ? 'rgba(10, 132, 255, 0.12)' : 'rgba(191, 90, 242, 0.12)', border: `1px solid ${file.type.startsWith('image/') ? 'rgba(10, 132, 255, 0.3)' : 'rgba(191, 90, 242, 0.3)'}`, padding: '0.25rem 0.65rem', borderRadius: '6px', fontSize: '0.8rem', color: file.type.startsWith('image/') ? 'var(--accent-blue)' : 'var(--status-purple)' }}>
                       {file.type.startsWith('image/') ? (
                         <img src={file.content} alt={file.name} className="file-chip-img" />
                       ) : (
@@ -1648,7 +1855,7 @@ function App() {
                   onMouseLeave={e => e.currentTarget.style.borderColor = '#30363d'}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 600, fontSize: '0.85rem', marginBottom: '0.4rem', color: '#e6edf3' }}>
-                    {(() => { const TI = TEMPLATE_ICONS[t.id] || FileText; return <TI size={14} style={{ color: '#a78bfa', flexShrink: 0 }} />; })()}
+                    {(() => { const TI = TEMPLATE_ICONS[t.id] || FileText; return <TI size={14} style={{ color: 'var(--status-purple)', flexShrink: 0 }} />; })()}
                     <span>{t.name}</span>
                   </div>
                   <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', marginBottom: '0.75rem', lineHeight: 1.4 }}>{t.prompt.substring(0, 120)}...</div>
@@ -1753,7 +1960,7 @@ function App() {
         <div className="modal-overlay">
           <div className="modal-card">
             <h2 style={{ marginTop: 0, marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <Settings size={22} style={{ color: '#2f81f7' }} /> Dashboard Settings
+              <Settings size={22} style={{ color: 'var(--accent-blue)' }} /> Dashboard Settings
             </h2>
 
             <div style={{ 

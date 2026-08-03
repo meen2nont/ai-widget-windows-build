@@ -33,8 +33,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends python3 make g+
 # Copy built frontend
 COPY --from=builder /app/dist ./dist
 
-# Copy the server.js proxy
+# Copy the server.js and memory.js proxy
 COPY server.js .
+COPY memory.js .
 
 VOLUME /app/data
 

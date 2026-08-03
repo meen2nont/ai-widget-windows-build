@@ -187,16 +187,16 @@ export default function MarkdownMessage({ content }) {
 
           // Headers
           if (line.startsWith('### ')) {
-            renderedElements.push(<h4 key={i} style={{ margin: '0.8rem 0 0.4rem', color: '#58a6ff' }}>{formatInline(line.replace('### ', ''))}</h4>);
+            renderedElements.push(<h4 key={i} style={{ margin: '0.8rem 0 0.4rem', color: 'var(--accent-blue)' }}>{formatInline(line.replace('### ', ''))}</h4>);
           } else if (line.startsWith('## ')) {
-            renderedElements.push(<h3 key={i} style={{ margin: '1rem 0 0.5rem', color: '#58a6ff', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '0.3rem' }}>{formatInline(line.replace('## ', ''))}</h3>);
+            renderedElements.push(<h3 key={i} style={{ margin: '1rem 0 0.5rem', color: 'var(--accent-blue)', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '0.3rem' }}>{formatInline(line.replace('## ', ''))}</h3>);
           } else if (line.startsWith('# ')) {
-            renderedElements.push(<h2 key={i} style={{ margin: '1.2rem 0 0.6rem', color: '#79c0ff' }}>{formatInline(line.replace('# ', ''))}</h2>);
+            renderedElements.push(<h2 key={i} style={{ margin: '1.2rem 0 0.6rem', color: 'var(--text-primary)' }}>{formatInline(line.replace('# ', ''))}</h2>);
           } else if (line.trim().startsWith('- ') || line.trim().startsWith('* ')) {
             // Bullet List
             renderedElements.push(
               <div key={i} style={{ display: 'flex', gap: '0.5rem', margin: '0.15rem 0 0.15rem 0.5rem' }}>
-                <span style={{ color: '#38bdf8' }}>•</span>
+                <span style={{ color: 'var(--accent-blue)' }}>•</span>
                 <div>{formatInline(line.trim().substring(2))}</div>
               </div>
             );
