@@ -744,7 +744,11 @@ app.post('/api/deepseek/chat', async (req, res) => {
         res.end();
 
         if (useMemory && sessionId && serverConfig.deepseek) {
-            extractAndStore(db, serverConfig, sessionId, finalMessages)
+            const extractionMessages = [...finalMessages];
+            if (fullContent && !extractionMessages.some(m => m.role === 'assistant' && m.content === fullContent)) {
+                extractionMessages.push({ role: 'assistant', content: fullContent });
+            }
+            extractAndStore(db, serverConfig, sessionId, extractionMessages)
                 .then(result => {
                     if (result) console.log('[memory] extracted', result.facts, 'facts, summary:', result.summary);
                 })
@@ -836,7 +840,7 @@ app.post('/api/ollama/chat', async (req, res) => {
         res.end();
 
         if (useMemory && sessionId && serverConfig.deepseek) {
-            extractAndStore(db, serverConfig, sessionId, finalMessages)
+            extractAndStore(db, serverConfig, sessionId, [...finalMessages, ...(fullContent ? [{ role: 'assistant', content: fullContent }] : [])])
                 .then(result => {
                     if (result) console.log('[memory] extracted', result.facts, 'facts, summary:', result.summary);
                 })
