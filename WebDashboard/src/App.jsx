@@ -224,23 +224,32 @@ function App() {
   const [lastRefreshed, setLastRefreshed] = useState(new Date());
   const [toastMsg, setToastMsg] = useState('');
 
-  // Load config from server (and fallback to local encrypted config) on initial mount
+  // Load config from server (service availability booleans, NOT actual keys)
+  // and fallback to local encrypted config for the settings form.
   useEffect(() => {
     async function initKeys() {
+      // 1. Load actual API keys from encrypted localStorage (for settings form)
+      const decryptedKeys = await loadAndDecryptConfig();
+      setKeys(decryptedKeys);
+
+      // 2. If no keys configured, prompt user to set up
+      if (!decryptedKeys.deepseek && !decryptedKeys.ollama && !decryptedKeys.ollamaPay) {
+        showToast('กรุณาตั้งค่า API Key ใน Settings ก่อนใช้งาน');
+      }
+
+      // 3. Fetch service availability from server (no actual keys exposed)
       try {
         const res = await fetch('/api/config');
         if (res.ok) {
-          const serverKeys = await res.json();
-          if (serverKeys.deepseek || serverKeys.ollama || serverKeys.ollamaPay) {
-            setKeys(serverKeys);
-            return;
+          const serverConfig = await res.json();
+          // serverConfig = { services: { deepseek: bool, ollama: bool, ollamaPay: bool }, embedModel: '...' }
+          if (serverConfig.embedModel) {
+            setKeys(k => ({ ...k, embedModel: serverConfig.embedModel }));
           }
         }
       } catch (e) {
-        console.warn('Could not fetch server config, fallback to local', e);
+        console.warn('Could not fetch server config', e);
       }
-      const decryptedKeys = await loadAndDecryptConfig();
-      setKeys(decryptedKeys);
     }
     initKeys();
   }, []);
@@ -418,13 +427,20 @@ function App() {
   const fetchData = async () => {
     setLoading(true);
     try {
+      // 0. Check which services are available on the server first
+      let serverServices = {};
+      try {
+        const cfgRes = await fetch('/api/config');
+        if (cfgRes.ok) {
+          serverServices = (await cfgRes.json()).services || {};
+        }
+      } catch (e) { /* ignore */ }
+
       // 1. Fetch DeepSeek Balance
-      if (keys.deepseek) {
+      if (keys.deepseek && serverServices.deepseek) {
         const start = Date.now();
         try {
-          const res = await fetch('/api/deepseek/balance', {
-            headers: { 'Authorization': `Bearer ${keys.deepseek}` }
-          });
+          const res = await fetch('/api/deepseek/balance');
           const latency = Date.now() - start;
           if (res.ok) {
             const json = await res.json();
@@ -458,12 +474,10 @@ function App() {
       }
 
       // 2. Fetch Ollama Cloud Usage
-      if (keys.ollama) {
+      if (keys.ollama && serverServices.ollama) {
         const start = Date.now();
         try {
-          const res = await fetch('/api/ollama/usage', {
-            headers: { 'Authorization': `Bearer ${keys.ollama}` }
-          });
+          const res = await fetch('/api/ollama/usage');
           const latency = Date.now() - start;
           if (res.ok) {
             const json = await res.json();
@@ -483,12 +497,10 @@ function App() {
       }
 
       // 3. Fetch Ollama Pay Usage
-      if (keys.ollamaPay) {
+      if (keys.ollamaPay && serverServices.ollamaPay) {
         const start = Date.now();
         try {
-          const res = await fetch('/api/ollama-pay/usage', {
-            headers: { 'Authorization': `Bearer ${keys.ollamaPay}` }
-          });
+          const res = await fetch('/api/ollama-pay/usage');
           const latency = Date.now() - start;
           if (res.ok) {
             const json = await res.json();
@@ -898,17 +910,13 @@ function App() {
       : PERSONAS[selectedPersona]?.prompt || '';
 
     const endpoint = isOllamaModel ? '/api/ollama/chat' : '/api/deepseek/chat';
-    const authHeader = isOllamaModel ? `Bearer ${keys.ollama}` : `Bearer ${keys.deepseek}`;
     const controller = new AbortController();
     abortRef.current = controller;
 
     try {
       const res = await fetch(endpoint, {
         method: 'POST',
-        headers: {
-          'Authorization': authHeader,
-          'Content-Type': 'application/json'
-        },
+        headers: { 'Content-Type': 'application/json' },
         signal: controller.signal,
         body: JSON.stringify({
           model: isOllamaModel ? selectedModel.replace('ollama:', '') : selectedModel,
@@ -1010,7 +1018,7 @@ function App() {
         <div className="header-actions">
           <div className="latency-tag" style={{ padding: '0.4rem 0.75rem', borderRadius: '10px' }}>
             <Clock size={14} />
-            <span>Last updated {lastRefreshed.toLocaleTimeString('en-US', { timeZone: 'Asia/Bangkok' })}</span>
+            <span>Last updated {lastRefreshed.toLocaleTimeString('th-TH', { timeZone: 'Asia/Bangkok', hour12: false })}</span>
           </div>
 
 

@@ -1,5 +1,7 @@
 import express from 'express';
 import cors from 'cors';
+import dotenv from 'dotenv';
+dotenv.config({ override: true });
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import fs from 'fs';
@@ -37,10 +39,20 @@ initMemoryTables(db);
 
 
 // ── Encryption Setup ────────────────────────────────────────────────────
-// Derive a 32-byte key from CONFIG_SECRET env var (or a built-in default).
-// Set CONFIG_SECRET in your environment for production security.
-const RAW_SECRET = process.env.CONFIG_SECRET || 'ai-widget-dashboard-default-secret-2025';
-const CIPHER_KEY = crypto.createHash('sha256').update(RAW_SECRET).digest(); // 32 bytes
+// Derive a 32-byte key from CONFIG_SECRET env var.
+// CONFIG_SECRET MUST be set in production — no fallback default.
+const RAW_SECRET = process.env.CONFIG_SECRET;
+if (!RAW_SECRET) {
+  const msg = 'CONFIG_SECRET environment variable is required. Set a strong random secret for production security.';
+  if (process.env.NODE_ENV === 'production') {
+    console.error(msg);
+    process.exit(1);
+  }
+  console.warn('WARNING: ' + msg + ' Using a random ephemeral secret — config will be unrecoverable after restart.');
+}
+// Use a random per-run secret when none is provided (dev only — data is lost on restart)
+const EFFECTIVE_SECRET = RAW_SECRET || crypto.randomBytes(32).toString('hex');
+const CIPHER_KEY = crypto.createHash('sha256').update(EFFECTIVE_SECRET).digest(); // 32 bytes
 
 const ALGORITHM = 'aes-256-gcm';
 const ENC_PREFIX = 'enc:v1:'; // marker so we can detect encrypted files
@@ -121,9 +133,17 @@ const PORT = process.env.PORT || 9000;
 app.use(cors());
 app.use(express.json());
 
-// Get Config Endpoint
+// Get Config Endpoint — returns service availability booleans, NOT actual API keys
 app.get('/api/config', (req, res) => {
-    res.json(getServerConfig());
+    const cfg = getServerConfig();
+    res.json({
+        services: {
+            deepseek: Boolean(cfg.deepseek),
+            ollama: Boolean(cfg.ollama),
+            ollamaPay: Boolean(cfg.ollamaPay)
+        },
+        embedModel: cfg.embedModel || 'nomic-embed-text'
+    });
 });
 
 // Save Config Endpoint
@@ -140,11 +160,13 @@ app.post('/api/config', (req, res) => {
 app.get('/api/deepseek/balance', async (req, res) => {
     try {
         const serverConfig = getServerConfig();
-        const authHeader = req.headers.authorization || (serverConfig.deepseek ? `Bearer ${serverConfig.deepseek}` : '');
+        if (!serverConfig.deepseek) {
+            return res.status(503).json({ error: 'DeepSeek API key not configured', available: false });
+        }
         const response = await fetch('https://api.deepseek.com/user/balance', {
             method: 'GET',
             headers: {
-                'Authorization': authHeader,
+                'Authorization': `Bearer ${serverConfig.deepseek}`,
                 'Accept': 'application/json'
             }
         });
@@ -346,6 +368,76 @@ const AVAILABLE_TOOLS = [
     }
 ];
 
+// ── Safe arithmetic evaluator (recursive descent, no eval/Function) ──
+function safeEvaluate(expr) {
+  // Tokenize: numbers, operators, parentheses
+  const tokens = [];
+  let pos = 0;
+  while (pos < expr.length) {
+    const ch = expr[pos];
+    if (/\s/.test(ch)) { pos++; continue; }
+    if ('+-*/()'.includes(ch)) { tokens.push({ t: 'op', v: ch }); pos++; continue; }
+    if (/[\d.]/.test(ch)) {
+      let num = '';
+      while (pos < expr.length && /[\d.]/.test(expr[pos])) { num += expr[pos]; pos++; }
+      const n = parseFloat(num);
+      if (isNaN(n)) throw new Error('Invalid number: ' + num);
+      tokens.push({ t: 'num', v: n });
+      continue;
+    }
+    throw new Error('Unexpected character: ' + ch);
+  }
+
+  let i = 0;
+  function peek() { return i < tokens.length ? tokens[i] : null; }
+  function consume(t) { const tok = tokens[i]; if (tok && tok.t === t) { i++; return tok; } throw new Error('Expected ' + t); }
+
+  function parseAddSub() {
+    let left = parseMulDiv();
+    while (peek() && peek().t === 'op' && (peek().v === '+' || peek().v === '-')) {
+      const op = consume('op').v;
+      const right = parseMulDiv();
+      left = op === '+' ? left + right : left - right;
+    }
+    return left;
+  }
+
+  function parseMulDiv() {
+    let left = parseUnary();
+    while (peek() && peek().t === 'op' && (peek().v === '*' || peek().v === '/')) {
+      const op = consume('op').v;
+      const right = parseUnary();
+      if (op === '*') { left *= right; }
+      else { if (right === 0) throw new Error('Division by zero'); left /= right; }
+    }
+    return left;
+  }
+
+  function parseUnary() {
+    if (peek() && peek().t === 'op' && peek().v === '-') { consume('op'); return -parsePrimary(); }
+    if (peek() && peek().t === 'op' && peek().v === '+') { consume('op'); return parsePrimary(); }
+    return parsePrimary();
+  }
+
+  function parsePrimary() {
+    if (!peek()) throw new Error('Unexpected end of expression');
+    if (peek().t === 'num') return consume('num').v;
+    if (peek().t === 'op' && peek().v === '(') {
+      consume('op');
+      const val = parseAddSub();
+      if (!peek() || peek().t !== 'op' || peek().v !== ')') throw new Error('Missing closing parenthesis');
+      consume('op');
+      return val;
+    }
+    throw new Error('Unexpected token: ' + (peek()?.v || '?'));
+  }
+
+  const result = parseAddSub();
+  if (i !== tokens.length) throw new Error('Unexpected trailing characters');
+  if (!isFinite(result)) throw new Error('Result is not finite');
+  return result;
+}
+
 // Helper to execute function tools
 async function executeToolCall(toolName, args, db, serverConfig) {
     try {
@@ -370,8 +462,9 @@ async function executeToolCall(toolName, args, db, serverConfig) {
             return now.toLocaleString('th-TH', { timeZone: 'Asia/Bangkok', dateStyle: 'full', timeStyle: 'medium' });
         }
         if (toolName === 'calculator') {
-            const expr = (args.expression || '').replace(/[^0-9+\-*/().\s]/g, '');
-            const val = Function(`'use strict'; return (${expr})`)();
+            const expr = (args.expression || '').replace(/[^0-9+\-*/().\s]/g, '').trim();
+            if (!expr) return '0';
+            const val = safeEvaluate(expr);
             return String(val);
         }
     } catch (e) {
@@ -504,8 +597,8 @@ function sseSend(res, event, data) {
 app.post('/api/deepseek/chat', async (req, res) => {
     try {
         const serverConfig = getServerConfig();
-        const authHeader = req.headers.authorization || (serverConfig.deepseek ? `Bearer ${serverConfig.deepseek}` : '');
-        
+        const authHeader = serverConfig.deepseek ? `Bearer ${serverConfig.deepseek}` : '';
+
         const { webSearch, personaPrompt, attachedFiles, useTools, useMemory, sessionId, messages, ...otherParams } = req.body;
         let finalMessages = Array.isArray(messages) ? [...messages] : [];
         let searchResults = [];
@@ -756,6 +849,7 @@ app.post('/api/deepseek/chat', async (req, res) => {
         }
     } catch (error) {
         console.error('DeepSeek chat error:', error);
+        clearInterval(ping);
         try {
             sseSend(res, 'error', { error: 'Failed to generate chat response' });
             res.end();
@@ -767,7 +861,7 @@ app.post('/api/deepseek/chat', async (req, res) => {
 app.post('/api/ollama/chat', async (req, res) => {
     try {
         const serverConfig = getServerConfig();
-        const authHeader = req.headers.authorization || (serverConfig.ollama ? `Bearer ${serverConfig.ollama}` : '');
+        const authHeader = serverConfig.ollama ? `Bearer ${serverConfig.ollama}` : '';
         const { model, messages, useMemory, sessionId } = req.body;
         let finalMessages = Array.isArray(messages) ? [...messages] : [];
 
@@ -859,11 +953,13 @@ app.post('/api/ollama/chat', async (req, res) => {
 app.get('/api/ollama/usage', async (req, res) => {
     try {
         const serverConfig = getServerConfig();
-        const authHeader = req.headers.authorization || (serverConfig.ollama ? `Bearer ${serverConfig.ollama}` : '');
+        if (!serverConfig.ollama) {
+            return res.status(503).json({ error: 'Ollama API key not configured', available: false });
+        }
         const response = await fetch('https://ollama.com/api/usage', {
             method: 'GET',
             headers: {
-                'Authorization': authHeader,
+                'Authorization': `Bearer ${serverConfig.ollama}`,
                 'Accept': 'application/json'
             }
         });
@@ -878,11 +974,13 @@ app.get('/api/ollama/usage', async (req, res) => {
 app.get('/api/ollama-pay/usage', async (req, res) => {
     try {
         const serverConfig = getServerConfig();
-        const authHeader = req.headers.authorization || (serverConfig.ollamaPay ? `Bearer ${serverConfig.ollamaPay}` : '');
+        if (!serverConfig.ollamaPay) {
+            return res.status(503).json({ error: 'Ollama Pay API key not configured', available: false });
+        }
         const response = await fetch('https://ollama-pay.thaigqsoft.com/api/v1/usage/total', {
             method: 'GET',
             headers: {
-                'Authorization': authHeader,
+                'Authorization': `Bearer ${serverConfig.ollamaPay}`,
                 'Accept': 'application/json'
             }
         });
