@@ -43,6 +43,17 @@ namespace AIWidgetWindowsApp
             _ollamaControl = new OllamaControl { DataContext = OllamaVM };
             _ollamaPayControl = new OllamaPayControl { DataContext = OllamaPayVM };
 
+            AIWidgetWindowsApp.Services.NotificationService.OnNotificationRequested += (id, title, body) =>
+            {
+                if (MyNotifyIcon != null)
+                {
+                    Application.Current.Dispatcher.Invoke(() =>
+                    {
+                        MyNotifyIcon.ShowBalloonTip(title, body, Hardcodet.Wpf.TaskbarNotification.BalloonIcon.Info);
+                    });
+                }
+            };
+
             // Default to overview
             ChangeTab(0); 
             

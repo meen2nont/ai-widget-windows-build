@@ -25,8 +25,16 @@ namespace AIWidgetWindowsApp.ViewModels
             KeychainHelper.Save("OllamaPayAPIKey", value);
         }
 
+        private System.Windows.Threading.DispatcherTimer? _refreshTimer;
+
         [ObservableProperty]
         private int refreshInterval = 60;
+
+        partial void OnRefreshIntervalChanged(int value)
+        {
+            KeychainHelper.Save("OllamaPayRefreshInterval", value.ToString());
+            StartAutoRefresh();
+        }
 
         [ObservableProperty]
         private bool isAvailable = true;
@@ -67,7 +75,26 @@ namespace AIWidgetWindowsApp.ViewModels
         public OllamaPayViewModel()
         {
             this.ApiKey = KeychainHelper.Load("OllamaPayAPIKey") ?? string.Empty;
+            
+            if (int.TryParse(KeychainHelper.Load("OllamaPayRefreshInterval"), out int savedInterval) && savedInterval > 0)
+            {
+                this.RefreshInterval = savedInterval;
+            }
+            
             _ = FetchDataAsync();
+            StartAutoRefresh();
+        }
+
+        public void StartAutoRefresh()
+        {
+            _refreshTimer?.Stop();
+            if (RefreshInterval > 0)
+            {
+                _refreshTimer = new System.Windows.Threading.DispatcherTimer();
+                _refreshTimer.Interval = TimeSpan.FromSeconds(RefreshInterval);
+                _refreshTimer.Tick += (s, e) => _ = FetchDataAsync();
+                _refreshTimer.Start();
+            }
         }
 
         [RelayCommand]
@@ -120,6 +147,11 @@ namespace AIWidgetWindowsApp.ViewModels
                     IsAvailable = false;
                     ErrorMsg = $"Error {(int)response.StatusCode}";
                     UpdateMainWindow("Err");
+
+                    if (response.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
+                    {
+                        NotificationService.SendNotification("ollama_pay_rate_limit", "⚠️ Ollama Pay Rate Limited", "Rate limit reached for Ollama Pay API.");
+                    }
                 }
             }
             catch (Exception ex)

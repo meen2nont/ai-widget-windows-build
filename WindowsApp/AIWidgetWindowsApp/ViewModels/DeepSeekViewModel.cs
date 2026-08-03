@@ -26,8 +26,16 @@ namespace AIWidgetWindowsApp.ViewModels
             KeychainHelper.Save("DeepSeekAPIKey", value);
         }
 
+        private System.Windows.Threading.DispatcherTimer? _refreshTimer;
+
         [ObservableProperty]
         private int refreshInterval = 60;
+
+        partial void OnRefreshIntervalChanged(int value)
+        {
+            KeychainHelper.Save("DeepSeekRefreshInterval", value.ToString());
+            StartAutoRefresh();
+        }
 
         [ObservableProperty]
         private string balance = "--";
@@ -65,7 +73,59 @@ namespace AIWidgetWindowsApp.ViewModels
         public DeepSeekViewModel()
         {
             this.ApiKey = KeychainHelper.Load("DeepSeekAPIKey") ?? string.Empty;
+            
+            if (int.TryParse(KeychainHelper.Load("DeepSeekRefreshInterval"), out int savedInterval) && savedInterval > 0)
+            {
+                this.RefreshInterval = savedInterval;
+            }
+            
             _ = FetchDataAsync();
+            StartAutoRefresh();
+        }
+
+        public void StartAutoRefresh()
+        {
+            _refreshTimer?.Stop();
+            if (RefreshInterval > 0)
+            {
+                _refreshTimer = new System.Windows.Threading.DispatcherTimer();
+                _refreshTimer.Interval = TimeSpan.FromSeconds(RefreshInterval);
+                _refreshTimer.Tick += (s, e) => _ = FetchDataAsync();
+                _refreshTimer.Start();
+            }
+        }
+
+        private void UpdateDailySpend(string currentBalance)
+        {
+            string todayStr = DateTime.Now.ToString("yyyy-MM-dd");
+            string savedDate = KeychainHelper.Load("DailySpendDate") ?? "";
+            string startBalStr = KeychainHelper.Load("DailySpendStartBal") ?? currentBalance;
+
+            if (double.TryParse(currentBalance, out double current))
+            {
+                if (savedDate == todayStr)
+                {
+                    if (double.TryParse(startBalStr, out double start))
+                    {
+                        if (current > start)
+                        {
+                            KeychainHelper.Save("DailySpendStartBal", currentBalance);
+                            SpentToday = "0.0000";
+                        }
+                        else
+                        {
+                            double diff = Math.Max(0, start - current);
+                            SpentToday = diff.ToString("F4");
+                        }
+                    }
+                }
+                else
+                {
+                    KeychainHelper.Save("DailySpendDate", todayStr);
+                    KeychainHelper.Save("DailySpendStartBal", currentBalance);
+                    SpentToday = "0.0000";
+                }
+            }
         }
 
         [RelayCommand]
@@ -103,7 +163,13 @@ namespace AIWidgetWindowsApp.ViewModels
                             Balance = info.TotalBalance ?? "--";
                             Currency = info.Currency ?? "USD";
                             
+                            UpdateDailySpend(Balance);
                             UpdateMainWindow($"${Balance} {Currency}");
+
+                            if (double.TryParse(Balance, out double doubleBalance) && doubleBalance < APIConstants.DeepSeek.LowBalanceThreshold)
+                            {
+                                NotificationService.SendNotification("low_deepseek_balance", "⚠️ DeepSeek Balance Low", $"Your remaining DeepSeek balance is ${Balance} {Currency}. Please top up soon.");
+                            }
                         }
                     }
                 }
@@ -123,7 +189,7 @@ namespace AIWidgetWindowsApp.ViewModels
         }
 
         [RelayCommand]
-        public async Task SendPromptAsync()
+        public async Task SendPromptAsync(string? systemPrompt = null)
         {
             if (string.IsNullOrWhiteSpace(PromptText) || string.IsNullOrWhiteSpace(ApiKey)) return;
 
@@ -135,10 +201,17 @@ namespace AIWidgetWindowsApp.ViewModels
                 var request = new HttpRequestMessage(HttpMethod.Post, APIConstants.DeepSeek.ChatCompletionsURL);
                 request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", ApiKey);
 
+                var messages = new System.Collections.Generic.List<object>();
+                if (!string.IsNullOrWhiteSpace(systemPrompt))
+                {
+                    messages.Add(new { role = "system", content = systemPrompt });
+                }
+                messages.Add(new { role = "user", content = PromptText });
+
                 var body = new
                 {
                     model = SelectedModel,
-                    messages = new[] { new { role = "user", content = PromptText } },
+                    messages = messages,
                     max_tokens = 1000
                 };
 

@@ -29,8 +29,16 @@ namespace AIWidgetWindowsApp.ViewModels
             _ = FetchOllamaCloudUsageAsync();
         }
 
+        private System.Windows.Threading.DispatcherTimer? _refreshTimer;
+
         [ObservableProperty]
         private int refreshInterval = 60;
+
+        partial void OnRefreshIntervalChanged(int value)
+        {
+            KeychainHelper.Save("OllamaRefreshInterval", value.ToString());
+            StartAutoRefresh();
+        }
 
         [ObservableProperty]
         private double sessionUsagePercent = 0.0;
@@ -57,7 +65,26 @@ namespace AIWidgetWindowsApp.ViewModels
         public OllamaViewModel()
         {
             this.OllamaApiKey = KeychainHelper.Load("OllamaApiKey") ?? string.Empty;
+            
+            if (int.TryParse(KeychainHelper.Load("OllamaRefreshInterval"), out int savedInterval) && savedInterval > 0)
+            {
+                this.RefreshInterval = savedInterval;
+            }
+            
             _ = FetchDataAsync();
+            StartAutoRefresh();
+        }
+
+        public void StartAutoRefresh()
+        {
+            _refreshTimer?.Stop();
+            if (RefreshInterval > 0)
+            {
+                _refreshTimer = new System.Windows.Threading.DispatcherTimer();
+                _refreshTimer.Interval = TimeSpan.FromSeconds(RefreshInterval);
+                _refreshTimer.Tick += (s, e) => _ = FetchDataAsync();
+                _refreshTimer.Start();
+            }
         }
 
         [RelayCommand]
@@ -91,6 +118,11 @@ namespace AIWidgetWindowsApp.ViewModels
                         {
                             SessionUsagePercent = res.Limits.Session.Usage.Value * 100.0;
                             OnPropertyChanged(nameof(SessionRemainingPercent));
+
+                            if (SessionRemainingPercent <= APIConstants.Ollama.LowSessionQuotaThresholdPercent)
+                            {
+                                NotificationService.SendNotification("low_ollama_session_quota", "⚠️ Ollama Cloud Quota Low", $"Your 5-hour session quota is at {SessionRemainingPercent:F1}% remaining.");
+                            }
                         }
                         if (res.Limits?.Weekly?.Usage.HasValue == true)
                         {
