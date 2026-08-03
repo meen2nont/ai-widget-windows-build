@@ -111,7 +111,8 @@ export async function embedTexts(serverConfig, texts) {
     const res = await fetch(OLLAMA_EMBED_URL, {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model, input: texts })
+      body: JSON.stringify({ model, input: texts }),
+      signal: AbortSignal.timeout(10000)
     });
     if (!res.ok) {
       console.error('[memory] embed HTTP', res.status, await res.text().catch(() => ''));
