@@ -25,7 +25,7 @@
 - Create `WebDashboard/test/memory.unit.test.js` — pure unit tests (vector math, prompt building, parsing, DB CRUD with `:memory:` sqlite, stubbed `fetch`).
 - Create `WebDashboard/test/memory.api.test.js` — integration tests hitting the Express app on an ephemeral port with a temp `DATA_DIR`.
 - Modify `WebDashboard/server.js` — import memory module, init tables, add `/api/memories*` endpoints, wire memory injection/extraction into both chat routes, add `memory_search` tool, add testability hooks (`DATA_DIR`, `START_SERVER`, `export { app }`).
-- Modify `WebDashboard/package.json` — add `"test": "node --test test/"` script.
+- Modify `WebDashboard/package.json` — add `"test": "node --test"` script (default test discovery; Node 24 no longer accepts a bare directory arg like `test/`).
 - Modify `WebDashboard/src/App.jsx` — memory state/handlers, chat toolbar toggle, per-message actions, Settings Memory panel.
 - Modify `WebDashboard/src/index.css` — `.toggle-chip.on.violet` variant + memory panel styles.
 
@@ -259,7 +259,7 @@ Edit `WebDashboard/package.json` scripts (add the `test` line):
     "dev": "vite",
     "build": "vite build --emptyOutDir",
     "lint": "oxlint",
-    "test": "node --test test/",
+    "test": "node --test",
     "preview": "vite preview"
   },
 ```
@@ -1047,7 +1047,7 @@ Replace with:
 
 - [ ] **Step 5: Run the test suite (regression)**
 
-Run: `node --test test/` (from `WebDashboard/`)
+Run: `node --test` (from `WebDashboard/`)
 Expected: PASS — all unit + integration tests
 
 - [ ] **Step 6: Manual verification of injection (no real API key needed)**
@@ -1440,7 +1440,7 @@ Find the `.toggle-chip.off` block (index.css:698-700) and add after it:
 
 - [ ] **Step 3: Run the full test suite**
 
-Run: `node --test test/` (from `WebDashboard/`)
+Run: `node --test` (from `WebDashboard/`)
 Expected: PASS — all tests
 
 - [ ] **Step 4: Build + lint**
@@ -1471,4 +1471,4 @@ git commit -m "style: memory toggle and memory list styles"
 - [ ] All 4 memory capabilities work: durable facts across chats, reference old chats via `memory_search`, automatic summaries, manual control (view/delete/clear/remember/unremember).
 - [ ] Works for both DeepSeek and Ollama chat models.
 - [ ] Memory degrades gracefully (no key / API down → chat unaffected).
-- [ ] `node --test test/`, `npm run build`, `npm run lint` all pass.
+- [ ] `node --test`, `npm run build`, `npm run lint` all pass.
