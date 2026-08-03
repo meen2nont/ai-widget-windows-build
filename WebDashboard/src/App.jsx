@@ -316,6 +316,7 @@ function App() {
   };
 
   const [showSettings, setShowSettings] = useState(false);
+  const [settingsTab, setSettingsTab] = useState('general'); // 'general', 'keys', 'memory', 'security'
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -353,7 +354,7 @@ function App() {
   }, []);
 
   const handleSaveKeys = async (e) => {
-    e.preventDefault();
+    if (e) e.preventDefault();
     // 1. Save to server-side JSON storage (/api/config)
     let serverSaved = false;
     try {
@@ -1128,20 +1129,20 @@ function App() {
   const activeServicesCount = [data.deepseek.available, data.ollama.available, data.ollamaPay.available].filter(Boolean).length;
 
   if (authState === 'loading') {
-    return <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#0d1117', color: 'white' }}>Loading...</div>;
+    return <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-main)', color: 'var(--text-primary)' }}>Loading...</div>;
   }
 
   if (authState === 'needs_setup' || authState === 'needs_login') {
     return (
-      <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#0d1117', color: '#e6edf3', fontFamily: 'sans-serif' }}>
-        <div style={{ background: '#161b22', padding: '2.5rem', borderRadius: '16px', border: '1px solid #30363d', boxShadow: '0 12px 32px rgba(0,0,0,0.6)', width: '100%', maxWidth: '420px', boxSizing: 'border-box' }}>
+      <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-main)', color: 'var(--text-primary)', fontFamily: 'inherit' }}>
+        <div style={{ background: 'var(--panel-bg-solid)', padding: '2.5rem', borderRadius: 'var(--radius-lg)', border: '1px solid var(--panel-border)', boxShadow: '0 16px 32px rgba(0,0,0,0.5)', width: '100%', maxWidth: '420px', boxSizing: 'border-box' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.5rem', justifyContent: 'center' }}>
-            <ShieldCheck size={36} style={{ color: '#3b82f6' }} />
+            <ShieldCheck size={36} style={{ color: 'var(--accent-blue)' }} />
             <h2 style={{ fontSize: '1.5rem', margin: 0, fontWeight: '600' }}>{authState === 'needs_setup' ? 'ตั้งรหัสผ่านระบบ' : 'เข้าสู่ระบบ'}</h2>
           </div>
           
           {authState === 'needs_setup' && (
-            <p style={{ fontSize: '0.9rem', color: '#8b949e', marginBottom: '2rem', textAlign: 'center', lineHeight: '1.5' }}>
+            <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: '2rem', textAlign: 'center', lineHeight: '1.5' }}>
               ระบบยังไม่มีรหัสผ่าน กรุณาตั้งรหัสผ่านสำหรับเข้าใช้งาน Dashboard (ตั้งครั้งเดียว)
             </p>
           )}
@@ -1153,20 +1154,19 @@ function App() {
                 value={authPassword}
                 onChange={(e) => setAuthPassword(e.target.value)}
                 placeholder="รหัสผ่าน"
-                style={{ width: '100%', background: '#010409', border: '1px solid #30363d', borderRadius: '8px', padding: '0.85rem 1rem', color: 'white', boxSizing: 'border-box', outline: 'none', fontSize: '1rem', transition: 'border-color 0.2s' }}
-                onFocus={(e) => e.target.style.borderColor = '#3b82f6'}
-                onBlur={(e) => e.target.style.borderColor = '#30363d'}
+                style={{ width: '100%', background: 'var(--bg-main)', border: '1px solid var(--panel-border)', borderRadius: 'var(--radius-md)', padding: '0.85rem 1rem', color: 'var(--text-primary)', boxSizing: 'border-box', outline: 'none', fontSize: '1rem', transition: 'border-color 0.2s' }}
+                onFocus={(e) => e.target.style.borderColor = 'var(--accent-blue)'}
+                onBlur={(e) => e.target.style.borderColor = 'var(--panel-border)'}
                 autoFocus
               />
             </div>
             
-            {authError && <p style={{ color: '#f85149', fontSize: '0.875rem', textAlign: 'center', margin: '0' }}>{authError}</p>}
+            {authError && <p style={{ color: 'var(--status-red)', fontSize: '0.875rem', textAlign: 'center', margin: '0' }}>{authError}</p>}
             
             <button 
               type="submit"
-              style={{ width: '100%', padding: '0.85rem', marginTop: '0.5rem', borderRadius: '8px', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.5rem', background: '#238636', border: 'none', color: 'white', fontWeight: 'bold', fontSize: '1rem', cursor: 'pointer', transition: 'background 0.2s' }}
-              onMouseOver={(e) => e.target.style.background = '#2ea043'}
-              onMouseOut={(e) => e.target.style.background = '#238636'}
+              className="primary"
+              style={{ width: '100%', padding: '0.85rem', marginTop: '0.5rem', borderRadius: 'var(--radius-md)', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.5rem', fontWeight: 'bold', fontSize: '1rem' }}
             >
               {authState === 'needs_setup' ? 'ยืนยันรหัสผ่าน' : 'เข้าสู่ระบบ'}
             </button>
@@ -1201,7 +1201,7 @@ function App() {
             <Settings size={18} /> <span className="btn-label">Settings</span>
           </button>
           
-          <button className="secondary" onClick={handleLogout} title="Logout" style={{ marginLeft: '8px', color: '#f85149', borderColor: '#490202', background: 'transparent' }}>
+          <button className="secondary" onClick={handleLogout} title="Logout" style={{ marginLeft: '8px', color: 'var(--status-red)', borderColor: 'rgba(255, 69, 58, 0.25)', background: 'rgba(255, 69, 58, 0.08)' }}>
             <LogOut size={18} /> <span className="btn-label">Logout</span>
           </button>
         </div>
@@ -2151,171 +2151,248 @@ function App() {
               <Settings size={22} style={{ color: 'var(--accent-blue)' }} /> Dashboard Settings
             </h2>
 
-            <div style={{ 
-              display: 'flex', 
-              alignItems: 'center', 
-              gap: '0.5rem', 
-              marginBottom: '1.5rem', 
-              padding: '0.5rem 0.85rem', 
-              background: 'rgba(35, 134, 54, 0.15)', 
-              border: '1px solid rgba(35, 134, 54, 0.3)', 
-              borderRadius: '8px', 
-              fontSize: '0.8rem', 
-              color: '#3fb950' 
-            }}>
-              <ShieldCheck size={16} />
-              <span>API Keys are saved securely to a JSON file on the server and synced with LocalStorage</span>
+            <div className="modal-tab-bar" style={{ display: 'flex', gap: '0.35rem', borderBottom: '1px solid var(--panel-border)', marginBottom: '1.25rem', overflowX: 'auto', paddingBottom: '0.5rem' }}>
+              <button 
+                type="button" 
+                onClick={() => setSettingsTab('general')} 
+                style={{ 
+                  flex: 1,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  textAlign: 'center',
+                  background: settingsTab === 'general' ? 'var(--accent-blue-bg)' : 'transparent', 
+                  border: '1px solid',
+                  borderColor: settingsTab === 'general' ? 'var(--accent-blue)' : 'transparent',
+                  borderRadius: 'var(--radius-sm)',
+                  color: settingsTab === 'general' ? 'var(--accent-blue)' : 'var(--text-secondary)', 
+                  padding: '0.45rem 0.5rem', 
+                  cursor: 'pointer', 
+                  fontSize: '0.82rem', 
+                  fontWeight: settingsTab === 'general' ? '600' : 'normal', 
+                  whiteSpace: 'nowrap',
+                  transition: 'all 0.15s ease'
+                }}
+              >
+                ทั่วไป
+              </button>
+              <button 
+                type="button" 
+                onClick={() => setSettingsTab('keys')} 
+                style={{ 
+                  flex: 1,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  textAlign: 'center',
+                  background: settingsTab === 'keys' ? 'var(--accent-blue-bg)' : 'transparent', 
+                  border: '1px solid',
+                  borderColor: settingsTab === 'keys' ? 'var(--accent-blue)' : 'transparent',
+                  borderRadius: 'var(--radius-sm)',
+                  color: settingsTab === 'keys' ? 'var(--accent-blue)' : 'var(--text-secondary)', 
+                  padding: '0.45rem 0.5rem', 
+                  cursor: 'pointer', 
+                  fontSize: '0.82rem', 
+                  fontWeight: settingsTab === 'keys' ? '600' : 'normal', 
+                  whiteSpace: 'nowrap',
+                  transition: 'all 0.15s ease'
+                }}
+              >
+                API Keys
+              </button>
+              <button 
+                type="button" 
+                onClick={() => setSettingsTab('memory')} 
+                style={{ 
+                  flex: 1,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  textAlign: 'center',
+                  background: settingsTab === 'memory' ? 'var(--accent-blue-bg)' : 'transparent', 
+                  border: '1px solid',
+                  borderColor: settingsTab === 'memory' ? 'var(--accent-blue)' : 'transparent',
+                  borderRadius: 'var(--radius-sm)',
+                  color: settingsTab === 'memory' ? 'var(--accent-blue)' : 'var(--text-secondary)', 
+                  padding: '0.45rem 0.5rem', 
+                  cursor: 'pointer', 
+                  fontSize: '0.82rem', 
+                  fontWeight: settingsTab === 'memory' ? '600' : 'normal', 
+                  whiteSpace: 'nowrap',
+                  transition: 'all 0.15s ease'
+                }}
+              >
+                ความจำ
+              </button>
+              <button 
+                type="button" 
+                onClick={() => setSettingsTab('security')} 
+                style={{ 
+                  flex: 1,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  textAlign: 'center',
+                  background: settingsTab === 'security' ? 'var(--accent-blue-bg)' : 'transparent', 
+                  border: '1px solid',
+                  borderColor: settingsTab === 'security' ? 'var(--accent-blue)' : 'transparent',
+                  borderRadius: 'var(--radius-sm)',
+                  color: settingsTab === 'security' ? 'var(--accent-blue)' : 'var(--text-secondary)', 
+                  padding: '0.45rem 0.5rem', 
+                  cursor: 'pointer', 
+                  fontSize: '0.82rem', 
+                  fontWeight: settingsTab === 'security' ? '600' : 'normal', 
+                  whiteSpace: 'nowrap',
+                  transition: 'all 0.15s ease'
+                }}
+              >
+                ความปลอดภัย
+              </button>
             </div>
 
-            <h3 style={{ marginTop: '0', marginBottom: '1rem', borderBottom: '1px solid #30363d', paddingBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '1.1rem' }}>
-              <ShieldCheck size={18} /> เปลี่ยนรหัสผ่าน Dashboard
-            </h3>
-            <form onSubmit={handleChangePassword} style={{ marginBottom: '2rem' }}>
-              <div className="form-group">
-                <label>รหัสผ่านปัจจุบัน</label>
-                <input 
-                  type="password" 
-                  value={currentPassword} 
-                  onChange={e => setCurrentPassword(e.target.value)} 
-                  placeholder="รหัสผ่านปัจจุบัน..."
-                />
-              </div>
-              <div className="form-group" style={{ display: 'flex', gap: '1rem', alignItems: 'flex-end' }}>
-                <div style={{ flex: 1 }}>
-                  <label>รหัสผ่านใหม่</label>
-                  <input 
-                    type="password" 
-                    value={newPassword} 
-                    onChange={e => setNewPassword(e.target.value)} 
-                    placeholder="รหัสผ่านใหม่..."
-                  />
-                </div>
-                <button type="submit" className="primary" style={{ height: '42px', padding: '0 1.5rem', background: '#238636', borderColor: 'transparent' }}>
-                  เปลี่ยนรหัสผ่าน
-                </button>
-              </div>
-            </form>
-
-            <h3 style={{ marginTop: '1.5rem', marginBottom: '1rem', borderBottom: '1px solid #30363d', paddingBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '1.1rem' }}>
-              <Settings size={18} /> API Keys & Configuration
-            </h3>
-            <form onSubmit={handleSaveKeys}>
-              <div className="form-group">
-                <label>DeepSeek API Key</label>
-                <input 
-                  type="password" 
-                  value={keys.deepseek} 
-                  onChange={e => setKeys({...keys, deepseek: e.target.value})} 
-                  placeholder="sk-..."
-                />
-              </div>
-
-              <div className="form-group">
-                <label>Ollama Cloud API Key</label>
-                <input 
-                  type="password" 
-                  value={keys.ollama} 
-                  onChange={e => setKeys({...keys, ollama: e.target.value})} 
-                  placeholder="Bearer token..."
-                />
-              </div>
-
-              <div className="form-group">
-                <label>Ollama Pay API Key</label>
-                <input 
-                  type="password" 
-                  value={keys.ollamaPay} 
-                  onChange={e => setKeys({...keys, ollamaPay: e.target.value})} 
-                  placeholder="Bearer token..."
-                />
-              </div>
-
-              <div className="form-group">
-                <label>Auto Refresh Interval</label>
-                <Dropdown
-                  label="Auto Refresh Interval"
-                  value={refreshInterval}
-                  onChange={v => setRefreshInterval(Number(v))}
-                  options={[
-                    { value: 15, label: 'Every 15 seconds' },
-                    { value: 30, label: 'Every 30 seconds' },
-                    { value: 60, label: 'Every 1 minute (Recommended)' },
-                    { value: 300, label: 'Every 5 minutes' },
-                    { value: 0, label: 'Manual refresh only' },
-                  ]}
-                />
-              </div>
-
-              <div className="form-group">
-                <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                  <Brain size={14} /> ระบบความจำ (Memory)
-                </label>
-                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginTop: '0.4rem' }}>
-                  <button
-                    type="button"
-                    onClick={() => { const next = !useMemory; setUseMemory(next); localStorage.setItem('use_memory', next ? '1' : '0'); }}
-                    className={`toggle-chip ${useMemory ? 'on violet' : 'off'}`}
-                  >
-                    <Brain size={14} />
-                    <span>ความจำ: <strong>{useMemory ? 'เปิด' : 'ปิด'}</strong></span>
-                  </button>
-                  <button type="button" className="secondary" style={{ padding: '0.3rem 0.65rem', fontSize: '0.78rem' }} onClick={loadMemories} title="โหลดรายการความจำ">
-                    <RefreshCw size={13} /> โหลด
-                  </button>
-                </div>
-                <small style={{ color: 'var(--text-muted)', display: 'block', margin: '0.35rem 0' }}>
-                  ความจำ {memoryData.memories.length} รายการ · สรุปแชท {memoryData.summaries.length} รายการ
-                </small>
-                <input
-                  type="text"
-                  placeholder="เพิ่มความจำด้วยตัวเอง (เช่น ชื่อฉันคือ...)"
-                  value={newManualMemory}
-                  onChange={e => setNewManualMemory(e.target.value)}
-                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addManualMemory(); } }}
-                />
-              </div>
-
-              {memoryData.memories.length > 0 && (
-                <div className="memory-list" style={{ maxHeight: '180px', overflowY: 'auto', marginBottom: '0.5rem' }}>
-                  {memoryData.memories.map(mem => (
-                    <div key={mem.id} className="memory-list-item">
-                      <span className={`memory-kind-tag ${mem.kind}`}>{mem.kind === 'manual' ? 'ด้วยมือ' : 'อัตโนมัติ'}</span>
-                      <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={mem.content}>{mem.content}</span>
-                      <button type="button" className="action-icon-btn" onClick={() => deleteMemoryById(mem.id)} title="ลบความจำนี้">
-                        <Trash2 size={12} />
-                      </button>
+            {settingsTab === 'security' && (
+              <div>
+                <h3 style={{ marginTop: '0', marginBottom: '1rem', borderBottom: '1px solid var(--panel-border)', paddingBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '1.05rem', color: 'var(--text-primary)' }}>
+                  <ShieldCheck size={18} style={{ color: 'var(--accent-blue)' }} /> เปลี่ยนรหัสผ่าน Dashboard
+                </h3>
+                <form onSubmit={handleChangePassword} style={{ marginBottom: '1.5rem' }}>
+                  <div className="form-group">
+                    <label>รหัสผ่านปัจจุบัน</label>
+                    <input 
+                      type="password" 
+                      value={currentPassword} 
+                      onChange={e => setCurrentPassword(e.target.value)} 
+                      placeholder="รหัสผ่านปัจจุบัน..."
+                    />
+                  </div>
+                  <div className="form-group" style={{ display: 'flex', gap: '1rem', alignItems: 'flex-end', flexWrap: 'wrap' }}>
+                    <div style={{ flex: 1, minWidth: '200px' }}>
+                      <label>รหัสผ่านใหม่</label>
+                      <input 
+                        type="password" 
+                        value={newPassword} 
+                        onChange={e => setNewPassword(e.target.value)} 
+                        placeholder="รหัสผ่านใหม่..."
+                      />
                     </div>
-                  ))}
-                </div>
-              )}
+                    <button type="submit" className="primary" style={{ height: '42px', padding: '0 1.5rem' }}>
+                      เปลี่ยนรหัสผ่าน
+                    </button>
+                  </div>
+                </form>
+              </div>
+            )}
 
-              {memoryData.memories.length > 0 && (
-                <div style={{ marginBottom: '0.75rem' }}>
-                  <button type="button" className="secondary" style={{ padding: '0.3rem 0.65rem', fontSize: '0.78rem', color: '#f85149', borderColor: 'rgba(248,113,113,0.3)' }} onClick={clearAllMemories}>
-                    <Trash2 size={13} /> ล้างความจำทั้งหมด
+            {settingsTab !== 'security' && (
+              <form onSubmit={handleSaveKeys}>
+                {settingsTab === 'keys' && (
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1.5rem', padding: '0.5rem 0.85rem', background: 'rgba(35, 134, 54, 0.15)', border: '1px solid rgba(35, 134, 54, 0.3)', borderRadius: '8px', fontSize: '0.8rem', color: '#3fb950' }}>
+                      <ShieldCheck size={16} />
+                      <span>API Keys are saved securely to a JSON file on the server and synced with LocalStorage</span>
+                    </div>
+                    <div className="form-group">
+                      <label>DeepSeek API Key</label>
+                      <input type="password" value={keys.deepseek} onChange={e => setKeys({...keys, deepseek: e.target.value})} placeholder="sk-..." />
+                    </div>
+                    <div className="form-group">
+                      <label>Ollama Cloud API Key</label>
+                      <input type="password" value={keys.ollama} onChange={e => setKeys({...keys, ollama: e.target.value})} placeholder="Bearer token..." />
+                    </div>
+                    <div className="form-group">
+                      <label>Ollama Pay API Key</label>
+                      <input type="password" value={keys.ollamaPay} onChange={e => setKeys({...keys, ollamaPay: e.target.value})} placeholder="Bearer token..." />
+                    </div>
+                  </div>
+                )}
+
+                {settingsTab === 'general' && (
+                  <div>
+                    <div className="form-group">
+                      <label>Auto Refresh Interval</label>
+                      <Dropdown
+                        label="Auto Refresh Interval"
+                        value={refreshInterval}
+                        onChange={v => setRefreshInterval(Number(v))}
+                        options={[
+                          { value: 15, label: 'Every 15 seconds' },
+                          { value: 30, label: 'Every 30 seconds' },
+                          { value: 60, label: 'Every 1 minute (Recommended)' },
+                          { value: 300, label: 'Every 5 minutes' },
+                          { value: 0, label: 'Manual refresh only' },
+                        ]}
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label>Embedding Model (ใช้ key Ollama)</label>
+                      <input type="text" value={keys.embedModel || 'nomic-embed-text'} onChange={e => setKeys({ ...keys, embedModel: e.target.value })} placeholder="nomic-embed-text" />
+                    </div>
+                  </div>
+                )}
+
+                {settingsTab === 'memory' && (
+                  <div>
+                    <div className="form-group">
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                        <Brain size={14} /> ระบบความจำ (Memory)
+                      </label>
+                      <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginTop: '0.4rem' }}>
+                        <button type="button" onClick={() => { const next = !useMemory; setUseMemory(next); localStorage.setItem('use_memory', next ? '1' : '0'); }} className={`toggle-chip ${useMemory ? 'on violet' : 'off'}`}>
+                          <Brain size={14} />
+                          <span>ความจำ: <strong>{useMemory ? 'เปิด' : 'ปิด'}</strong></span>
+                        </button>
+                        <button type="button" className="secondary" style={{ padding: '0.3rem 0.65rem', fontSize: '0.78rem' }} onClick={loadMemories} title="โหลดรายการความจำ">
+                          <RefreshCw size={13} /> โหลด
+                        </button>
+                      </div>
+                      <small style={{ color: 'var(--text-muted)', display: 'block', margin: '0.35rem 0' }}>
+                        ความจำ {memoryData.memories.length} รายการ · สรุปแชท {memoryData.summaries.length} รายการ
+                      </small>
+                      <input type="text" placeholder="เพิ่มความจำด้วยตัวเอง (เช่น ชื่อฉันคือ...)" value={newManualMemory} onChange={e => setNewManualMemory(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addManualMemory(); } }} />
+                    </div>
+
+                    {memoryData.memories.length > 0 && (
+                      <div className="memory-list" style={{ maxHeight: '180px', overflowY: 'auto', marginBottom: '0.5rem' }}>
+                        {memoryData.memories.map(mem => (
+                          <div key={mem.id} className="memory-list-item">
+                            <span className={`memory-kind-tag ${mem.kind}`}>{mem.kind === 'manual' ? 'ด้วยมือ' : 'อัตโนมัติ'}</span>
+                            <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={mem.content}>{mem.content}</span>
+                            <button type="button" className="action-icon-btn" onClick={() => deleteMemoryById(mem.id)} title="ลบความจำนี้">
+                              <Trash2 size={12} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {memoryData.memories.length > 0 && (
+                      <div style={{ marginBottom: '0.75rem' }}>
+                        <button type="button" className="secondary" style={{ padding: '0.3rem 0.65rem', fontSize: '0.78rem', color: '#f85149', borderColor: 'rgba(248,113,113,0.3)' }} onClick={clearAllMemories}>
+                          <Trash2 size={13} /> ล้างความจำทั้งหมด
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end', marginTop: '2rem' }}>
+                  <button type="button" className="secondary" onClick={() => setShowSettings(false)}>
+                    Cancel
+                  </button>
+                  <button type="submit" className="primary">
+                    Save Settings
                   </button>
                 </div>
-              )}
+              </form>
+            )}
 
-              <div className="form-group">
-                <label>Embedding Model (ใช้ key Ollama)</label>
-                <input
-                  type="text"
-                  value={keys.embedModel || 'nomic-embed-text'}
-                  onChange={e => setKeys({ ...keys, embedModel: e.target.value })}
-                  placeholder="nomic-embed-text"
-                />
-              </div>
-
+            {settingsTab === 'security' && (
               <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end', marginTop: '2rem' }}>
                 <button type="button" className="secondary" onClick={() => setShowSettings(false)}>
-                  Cancel
-                </button>
-                <button type="submit" className="primary">
-                  Save Settings
+                  Close
                 </button>
               </div>
-            </form>
+            )}
           </div>
         </div>
       )}

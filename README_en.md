@@ -12,57 +12,59 @@ AI Widget Dashboard is a utility application for tracking and managing API balan
 - **Customizable Display**: Choose which service icon to prioritize on your menu bar (e.g., DeepSeek icon with balance, Ollama icon with percentage).
 - **Auto-Refresh**: Configurable data refresh intervals (e.g., every 5 minutes) and supports Launch at Login.
 
-- **Web Dashboard (Docker)**: Premium web dashboard (Vite + React) running via Docker to monitor quotas in any browser, featuring an in-app DeepSeek AI Playground.
+- **Web Dashboard (Docker)**: A premium-style web dashboard (Vite + React) running via Docker to view quotas from any browser. It includes a built-in AI Playground to chat with DeepSeek, a **Setup/Login Password** system for access protection, and securely stores data in a **SQLite database (`dashboard-config.db`)**.
 
 ## 📁 Project Structure
 
-The project is divided into three main components:
+The project is divided into 3 main components:
 
-- **`/NativeApp`**: The macOS application built with Swift (using SwiftUI and AppKit).
-- **`/WindowsApp`**: The Windows application built with C# and WPF (using Hardcodet.NotifyIcon.Wpf for System Tray support).
-- **`/WebDashboard`**: The web dashboard built with React (Vite) + Express Proxy (Node.js) and containerized with Docker (Port 9000).
+- **`/NativeApp`**: macOS application developed with Swift (using SwiftUI and AppKit).
+- **`/WindowsApp`**: Windows application developed with C# and WPF (using Hardcodet.NotifyIcon.Wpf for the System Tray).
+- **`/WebDashboard`**: Web dashboard for viewing quotas and experimenting with AI, developed with React (Vite) + Express Proxy (Node.js) with SQLite DB, and containerized with Docker (Port 9000).
 
 ## 🚀 Installation & Usage
 
 ### 📌 Prerequisites
-Before you begin, ensure you have the following:
-- **Ollama Cloud API Key**: To fetch quota and usage data from Ollama Cloud, you must provide your API Key in the app settings (fetches data directly via the cloud; no local server required).
-- **DeepSeek API Key**: To fetch your DeepSeek balance, you must configure your API Key in the app.
-- **macOS**: Requires macOS 12.0 or later (for the Native app).
+Before you begin, ensure you have the following ready:
+- **Ollama Cloud API Key**: Required to fetch quota and usage status from Ollama Cloud. You need to enter this in the app's settings. (Data is fetched directly via the cloud; no local server required).
+- **DeepSeek API Key**: Required to fetch your DeepSeek account balance. Set this in the app's settings.
+- **macOS**: Requires macOS 12.0 or later (for the Native App).
 - **Windows**: Requires Windows 10/11 with the required .NET Framework/Core.
 
-### 🍎 For macOS (2 Usage Options)
+### 🍎 For macOS (2 Options Available)
 
-**Option 1: Native App (Recommended)**
-This runs as a standalone Menu Bar app:
+**Option 1: Using the Native App (Recommended)**
+This runs as a standalone Menu Bar App:
 1. Open the project folder in **Xcode**.
 2. Select the `AIWidgetApp` target.
-3. Build and Run (`Cmd + R`).
-4. An icon will appear on your Menu Bar at the top right of your screen.
+3. Click Build and Run (`Cmd + R`).
+4. An icon will appear on your Menu Bar at the top right of the screen.
 
-**Option 2: SwiftBar / xbar (Python Script)**
-The repository includes an `antigravity_status.10s.py` script for users who prefer **SwiftBar** or **xbar**:
+**Option 2: Using SwiftBar / xbar (Python Script)**
+The repository includes `antigravity_status.10s.py`, an alternative script for **SwiftBar** or **xbar** users:
 1. Install [SwiftBar](https://github.com/swiftbar/SwiftBar) or [xbar](https://xbarapp.com/).
-2. Place `antigravity_status.10s.py` into your SwiftBar/xbar plugin folder.
-3. The script will run via SwiftBar to display the status on your Menu Bar, refreshing every 10 seconds.
+2. Place `antigravity_status.10s.py` into your SwiftBar/xbar Plugin folder.
+3. The script will run alongside SwiftBar to update your status on the Menu Bar every 10 seconds.
 
 ### 🪟 For Windows (WindowsApp)
-1. Open `AIWidgetWindowsApp.csproj` or the Solution file in **Visual Studio**.
-2. Install any necessary NuGet Packages.
-3. Start Debugging (`F5`).
-4. The app will run and show its icon in the System Tray (bottom right of the Taskbar).
+1. Open the `AIWidgetWindowsApp.csproj` or Solution file in **Visual Studio**.
+2. Restore any required NuGet Packages.
+3. Click Start Debugging (`F5`).
+4. The app will run and show an icon in the System Tray at the bottom right of the Taskbar.
 
 ### 🐳 For Web Dashboard (Docker)
-1. Navigate to the `WebDashboard` directory:
+1. Navigate to the `WebDashboard` folder:
    ```bash
    cd WebDashboard
    ```
-2. Build and run via Docker (with mounted persistent volume for server-side `config.json` storage):
+2. Build and Run via Docker Compose (this automatically mounts volumes for persistent server-side storage):
    ```bash
-   docker build -t ai-widget-dashboard .
-   docker run -d --name ai-widget-dashboard -v $(pwd)/data:/app/data --restart unless-stopped -p 9000:9000 ai-widget-dashboard
+   docker-compose up -d --build
    ```
-3. Open your browser at `http://localhost:9000` (or server IP) and configure your API Keys in **Settings**. The keys are saved on the server as JSON so all connected devices share the same dashboard settings automatically without needing to re-enter keys on every device.
+3. Open your browser and go to `http://localhost:9000` (or your Server's IP address).
+   - **First Time Setup**: The system will prompt you to **"Setup Password"** for dashboard access.
+   - After logging in, navigate to **Settings** to enter your API Keys.
+   - All data, including your password, API Keys, and AI memory, is securely saved in the **SQLite database (`data/dashboard-config.db`)** on the server.
 
 ## ⚙️ Settings
 You can configure the following within the app:

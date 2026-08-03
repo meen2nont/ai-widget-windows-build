@@ -12,7 +12,7 @@ AI Widget Dashboard เป็นแอปพลิเคชันยูทิล
 - **ปรับแต่งการแสดงผลได้**: เลือกได้ว่าจะให้แสดงไอคอนของบริการไหน (เช่น ไอคอน DeepSeek พร้อมยอดเงิน, ไอคอน Ollama พร้อมเปอร์เซ็นต์) เป็นหลักบน Menu Bar
 - **อัปเดตอัตโนมัติ**: ตั้งเวลา Refresh ข้อมูลอัตโนมัติ (เช่น ทุกๆ 5 นาที) พร้อมรองรับการเปิดตอนเปิดเครื่อง (Launch at Login)
 
-- **Web Dashboard (Docker)**: เว็บแดชบอร์ดสไตล์พรีเมียม (Vite + React) สำหรับรันผ่าน Docker ดูโควต้าผ่านเบราว์เซอร์ พร้อมฟีเจอร์ AI Playground คุยกับ DeepSeek ได้ในตัว และระบบเข้ารหัสเก็บ API Keys แบบ **AES-256 (AES-GCM) JSON** ใน Browser LocalStorage
+- **Web Dashboard (Docker)**: เว็บแดชบอร์ดสไตล์พรีเมียม (Vite + React) สำหรับรันผ่าน Docker ดูโควต้าผ่านเบราว์เซอร์ พร้อมฟีเจอร์ AI Playground คุยกับ DeepSeek ได้ในตัว มีระบบ **Login / Setup Password** ป้องกันการเข้าถึง และจัดเก็บข้อมูลอย่างปลอดภัยในฐานข้อมูล **SQLite (`dashboard-config.db`)**
 
 ## 📁 โครงสร้างโปรเจกต์
 
@@ -20,7 +20,7 @@ AI Widget Dashboard เป็นแอปพลิเคชันยูทิล
 
 - **`/NativeApp`**: แอปพลิเคชันสำหรับ macOS พัฒนาด้วย Swift (ใช้ SwiftUI ร่วมกับ AppKit)
 - **`/WindowsApp`**: แอปพลิเคชันสำหรับ Windows พัฒนาด้วย C# และ WPF (ใช้ Hardcodet.NotifyIcon.Wpf สำหรับ System Tray)
-- **`/WebDashboard`**: เว็บแดชบอร์ดสำหรับดูโควต้าและทดลอง AI พัฒนาด้วย React (Vite) + Express Proxy (Node.js) และ containerized ด้วย Docker (Port 9000)
+- **`/WebDashboard`**: เว็บแดชบอร์ดสำหรับดูโควต้าและทดลอง AI พัฒนาด้วย React (Vite) + Express Proxy (Node.js) พร้อมฐานข้อมูล SQLite และ containerized ด้วย Docker (Port 9000)
 
 ## 🚀 การติดตั้งและการเปิดใช้งาน
 
@@ -57,12 +57,14 @@ AI Widget Dashboard เป็นแอปพลิเคชันยูทิล
    ```bash
    cd WebDashboard
    ```
-2. Build และ Run ผ่าน Docker (พร้อมเชื่อมต่อ Mount Volume สำหรับเซฟ `config.json` ถาวรบน Server):
+2. Build และ Run ผ่าน Docker Compose (ระบบจะจัดการ Mount Volume เซฟข้อมูลให้โดยอัตโนมัติ):
    ```bash
-   docker build -t ai-widget-dashboard .
-   docker run -d --name ai-widget-dashboard -v $(pwd)/data:/app/data --restart unless-stopped -p 9000:9000 ai-widget-dashboard
+   docker-compose up -d --build
    ```
-3. เปิดเบราว์เซอร์ไปที่ `http://localhost:9000` (หรือ IP ของ Server) แล้วไปที่ **Settings** เพื่อตั้งค่า API Keys โดยระบบจะบันทึกเก็บเป็น JSON บน Server ทำให้ทุกอุปกรณ์เปิดมาใช้งานร่วมกันได้ทันทีโดยไม่ต้องตั้งค่าใหม่ซ้ำอีก
+3. เปิดเบราว์เซอร์ไปที่ `http://localhost:9000` (หรือ IP ของ Server) 
+   - **การเข้าใช้งานครั้งแรก**: ระบบจะบังคับให้คุณ **"ตั้งรหัสผ่าน (Setup Password)"** สำหรับหน้าแดชบอร์ด
+   - หลังจากล็อกอินสำเร็จ ให้ไปที่ **Settings** เพื่อกรอก API Keys 
+   - ข้อมูลทั้งหมดรวมถึงรหัสผ่าน, API Keys และความจำของ AI จะถูกบันทึกอย่างปลอดภัยในฐานข้อมูล **SQLite (`data/dashboard-config.db`)** บนเซิร์ฟเวอร์
 
 ## ⚙️ การตั้งค่าการใช้งาน (Settings)
 ภายในแอปคุณสามารถตั้งค่าต่างๆ ได้ดังนี้:

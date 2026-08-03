@@ -1314,12 +1314,28 @@ header {
 
 .modal-card {
   width: 100%;
-  max-width: 500px;
+  max-width: 680px;
   padding: 2rem;
   border-radius: var(--radius-lg);
   background: #1c1c1e;
   border: 1px solid var(--panel-border);
   box-shadow: 0 16px 32px rgba(0, 0, 0, 0.5);
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.modal-card::-webkit-scrollbar {
+  width: 6px;
+}
+.modal-card::-webkit-scrollbar-track {
+  background: transparent;
+}
+.modal-card::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 10px;
+}
+.modal-card::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.25);
 }
 
 .templates-overlay {
@@ -1446,6 +1462,23 @@ button.secondary:hover {
 
 /* --- Tablet (portrait / landscape <= 1024px) --- */
 @media (max-width: 1024px) {
+  .modal-card,
+  .templates-card {
+    height: auto;
+    max-height: 88vh;
+    max-width: 520px;
+    width: calc(100% - 1.25rem);
+    border-radius: 18px;
+    border: 1px solid var(--panel-border);
+    padding: 1.25rem 1rem;
+    box-sizing: border-box;
+    margin: auto;
+  }
+
+  .modal-tab-bar::-webkit-scrollbar {
+    display: none;
+  }
+
   .container {
     padding: 1.25rem 1rem 1.5rem;
   }
