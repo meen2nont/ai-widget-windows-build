@@ -1451,6 +1451,16 @@ function App() {
                           <Brain size={13} />
                         </button>
                       )}
+                      {m.role === 'assistant' && (
+                        <button
+                          type="button"
+                          onClick={() => unrememberChat()}
+                          className="action-icon-btn"
+                          title="อย่าจำ — ลบความจำทั้งหมดของแชทนี้"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      )}
                       {/* Feature 1: TTS button on AI messages */}
                       {m.role === 'assistant' && (
                         <button
