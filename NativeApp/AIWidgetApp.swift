@@ -21,7 +21,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var globalEventMonitor: Any?
     
     var latestDeepSeekBalance: String?
-    var latestOllamaPercent: Int?
+    var latestOllamaPercent: Double?
     var latestOllamaPayStr: String?
     
     func refreshMenuBarTitle() {
@@ -54,7 +54,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     newImage = NSImage(systemSymbolName: "cloud.fill", accessibilityDescription: "Ollama")
                 }
                 if let pct = self.latestOllamaPercent {
-                    self.statusItem?.button?.title = " \(pct)%"
+                    self.statusItem?.button?.title = " \(String(format: "%.1f", pct))%"
                 } else {
                     self.statusItem?.button?.title = " Ollama"
                 }
@@ -84,7 +84,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         refreshMenuBarTitle()
     }
     
-    func updateOllamaTitle(sessionPercent: Int) {
+    func updateOllamaTitle(sessionPercent: Double) {
         self.latestOllamaPercent = sessionPercent
         refreshMenuBarTitle()
     }

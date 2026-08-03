@@ -85,7 +85,7 @@ namespace AIWidgetWindowsApp
                     break;
                 case 2:
                     MainContentControl.Content = _ollamaControl;
-                    UpdateTrayText($"{OllamaVM.SessionUsagePercent}% Session");
+                    UpdateTrayText($"{OllamaVM.SessionUsagePercent:F1}% Session");
                     break;
                 case 3:
                     MainContentControl.Content = _ollamaPayControl;
