@@ -190,7 +190,8 @@ function App() {
   const [keys, setKeys] = useState({
     deepseek: '',
     ollama: '',
-    ollamaPay: ''
+    ollamaPay: '',
+    embedModel: ''
   });
 
   const [refreshInterval, setRefreshInterval] = useState(
@@ -712,6 +713,35 @@ function App() {
     } else if (format === 'print') {
       window.print();
     }
+  };
+
+  const addManualMemory = async () => {
+    const content = newManualMemory.trim();
+    if (!content) return;
+    try {
+      const res = await fetch('/api/memories', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content })
+      });
+      if (res.ok) { setNewManualMemory(''); showToast('เพิ่มความจำแล้ว 🧠'); loadMemories(); }
+      else { const err = await res.json().catch(() => ({})); showToast(err.error || 'เพิ่มความจำไม่สำเร็จ'); }
+    } catch (e) { showToast('เพิ่มความจำไม่สำเร็จ'); }
+  };
+
+  const deleteMemoryById = async (id) => {
+    try {
+      await fetch(`/api/memories/${id}`, { method: 'DELETE' });
+      loadMemories();
+    } catch (e) { /* ignore */ }
+  };
+
+  const clearAllMemories = async () => {
+    try {
+      await fetch('/api/memories', { method: 'DELETE' });
+      showToast('ล้างความจำทั้งหมดแล้ว');
+      loadMemories();
+    } catch (e) { /* ignore */ }
   };
 
   const copyToClipboard = (text) => {
@@ -1776,6 +1806,67 @@ function App() {
                     { value: 300, label: 'Every 5 minutes' },
                     { value: 0, label: 'Manual refresh only' },
                   ]}
+                />
+              </div>
+
+              <div className="form-group">
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                  <Brain size={14} /> ระบบความจำ (Memory)
+                </label>
+                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginTop: '0.4rem' }}>
+                  <button
+                    type="button"
+                    onClick={() => { const next = !useMemory; setUseMemory(next); localStorage.setItem('use_memory', next ? '1' : '0'); }}
+                    className={`toggle-chip ${useMemory ? 'on violet' : 'off'}`}
+                  >
+                    <Brain size={14} />
+                    <span>ความจำ: <strong>{useMemory ? 'เปิด' : 'ปิด'}</strong></span>
+                  </button>
+                  <button type="button" className="secondary" style={{ padding: '0.3rem 0.65rem', fontSize: '0.78rem' }} onClick={loadMemories} title="โหลดรายการความจำ">
+                    <RefreshCw size={13} /> โหลด
+                  </button>
+                </div>
+                <small style={{ color: 'var(--text-muted)', display: 'block', margin: '0.35rem 0' }}>
+                  ความจำ {memoryData.memories.length} รายการ · สรุปแชท {memoryData.summaries.length} รายการ
+                </small>
+                <input
+                  type="text"
+                  placeholder="เพิ่มความจำด้วยตัวเอง (เช่น ชื่อฉันคือ...)"
+                  value={newManualMemory}
+                  onChange={e => setNewManualMemory(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addManualMemory(); } }}
+                />
+              </div>
+
+              {memoryData.memories.length > 0 && (
+                <div className="memory-list" style={{ maxHeight: '180px', overflowY: 'auto', marginBottom: '0.5rem' }}>
+                  {memoryData.memories.map(mem => (
+                    <div key={mem.id} className="memory-list-item">
+                      <span className={`memory-kind-tag ${mem.kind}`}>{mem.kind === 'manual' ? 'ด้วยมือ' : 'อัตโนมัติ'}</span>
+                      <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={mem.content}>{mem.content}</span>
+                      <button type="button" className="action-icon-btn" onClick={() => deleteMemoryById(mem.id)} title="ลบความจำนี้">
+                        <Trash2 size={12} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {memoryData.memories.length > 0 && (
+                <div style={{ marginBottom: '0.75rem' }}>
+                  <button type="button" className="secondary" style={{ padding: '0.3rem 0.65rem', fontSize: '0.78rem', color: '#f85149', borderColor: 'rgba(248,113,113,0.3)' }} onClick={clearAllMemories}>
+                    <Trash2 size={13} /> ล้างความจำทั้งหมด
+                  </button>
+                </div>
+              )}
+
+              <div className="form-group">
+                <label>Embedding Model (ใช้ key Ollama)</label>
+                <input
+                  type="text"
+                  value={keys.embedModel || 'nomic-embed-text'}
+                  onChange={e => setKeys({ ...keys, embedModel: e.target.value })}
+                  placeholder="nomic-embed-text"
                 />
               </div>
 
