@@ -356,7 +356,25 @@ async function executeToolCall(toolName, args) {
     return "Unknown tool";
 }
 
-// Proxy DeepSeek Chat Completions (with Web Search, URL Scraper, File Attachments, and Tool Calling)
+// ── Server-Sent Events (SSE) Helpers ─────────────────────────────────────
+function sseHeaders(res) {
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
+    res.flushHeaders();
+}
+
+function sseSend(res, event, data) {
+    if (res.writableEnded) return;
+    try {
+        res.write(`event: ${event}\n`);
+        res.write(`data: ${JSON.stringify(data)}\n\n`);
+    } catch (e) { /* client may have disconnected */ }
+}
+// ────────────────────────────────────────────────────────────────────────
+
+// Proxy DeepSeek Chat Completions (with Web Search, URL Scraper, File Attachments, Tool Calling, and SSE streaming)
 app.post('/api/deepseek/chat', async (req, res) => {
     try {
         const serverConfig = getServerConfig();
@@ -452,85 +470,164 @@ app.post('/api/deepseek/chat', async (req, res) => {
             payload.tools = AVAILABLE_TOOLS;
         }
 
-        let response = await fetch('https://api.deepseek.com/chat/completions', {
-            method: 'POST',
-            headers: {
-                'Authorization': authHeader,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(payload)
-        });
+        // ── SSE STREAMING MODE ──────────────────────────────────────────
+        sseHeaders(res);
+        const send = (event, data) => sseSend(res, event, data);
+        const upstream = new AbortController();
+        res.on('close', () => upstream.abort());
+        const ping = setInterval(() => {
+            try { res.write(': ping\n\n'); } catch (e) { /* ignore */ }
+        }, 20000);
 
-        let data = await response.json();
+        // Send search/scrape metadata up front so badges render immediately
+        const meta = {};
+        if (searchResults.length > 0) meta.searchResults = searchResults;
+        if (scrapedContent) meta.scrapedContent = scrapedContent;
+        if (Object.keys(meta).length > 0) send('meta', meta);
 
-        // Handle Tool Calling roundtrip if model requested function calls
-        if (useTools && data.choices?.[0]?.message?.tool_calls) {
-            const toolCalls = data.choices[0].message.tool_calls;
-            finalMessages.push(data.choices[0].message);
+        // stream each round of the (possibly tool-calling) conversation
+        let fullContent = '';
+        let usage = null;
+        let streamPayload = { ...payload, stream: true, messages: finalMessages };
 
-            for (const toolCall of toolCalls) {
-                const fnName = toolCall.function.name;
-                const fnArgs = JSON.parse(toolCall.function.arguments || '{}');
-                const toolOutput = await executeToolCall(fnName, fnArgs);
-
-                executedTools.push({ name: fnName, args: fnArgs, result: toolOutput });
-
-                finalMessages.push({
-                    role: 'tool',
-                    tool_call_id: toolCall.id,
-                    content: toolOutput
+        const streamRound = async (reqPayload) => {
+            let response;
+            try {
+                response = await fetch('https://api.deepseek.com/chat/completions', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': authHeader,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(reqPayload),
+                    signal: upstream.signal
                 });
+            } catch (e) {
+                if (e.name === 'AbortError') { send('aborted', {}); return null; }
+                throw e;
             }
 
-            // Call API again with tool results
-            response = await fetch('https://api.deepseek.com/chat/completions', {
-                method: 'POST',
-                headers: {
-                    'Authorization': authHeader,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    ...otherParams,
-                    messages: finalMessages
-                })
-            });
-            data = await response.json();
+            if (!response.ok || !response.body) {
+                const errText = await response.text().catch(() => '');
+                console.error('[deepseek] API error', response.status, errText.slice(0, 400));
+                console.error('[deepseek] failing payload:', JSON.stringify(reqPayload.messages).slice(0, 3000));
+                send('error', { error: `DeepSeek API error (${response.status}): ${errText}` });
+                return null;
+            }
+
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
+            let finishReason = null;
+            const toolCalls = {};
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split('\n');
+                buffer = lines.pop();
+                for (const line of lines) {
+                    const trimmed = line.trim();
+                    if (!trimmed || !trimmed.startsWith('data:')) continue;
+                    const data = trimmed.slice(5).trim();
+                    if (data === '[DONE]') continue;
+                    let json;
+                    try { json = JSON.parse(data); } catch (e) { continue; }
+                    const choice = json.choices?.[0];
+                    if (!choice) continue;
+                    if (choice.delta?.content) {
+                        fullContent += choice.delta.content;
+                        send('delta', { content: choice.delta.content });
+                    }
+                    if (choice.delta?.tool_calls) {
+                        for (const tc of choice.delta.tool_calls) {
+                            const idx = tc.index ?? 0;
+                            toolCalls[idx] = toolCalls[idx] || { id: '', type: 'function', function: { name: '', arguments: '' } };
+                            if (tc.id) toolCalls[idx].id = tc.id;
+                            if (tc.type) toolCalls[idx].type = tc.type;
+                            if (tc.function?.name) toolCalls[idx].function.name += tc.function.name;
+                            if (tc.function?.arguments) toolCalls[idx].function.arguments += tc.function.arguments;
+                        }
+                    }
+                    if (json.usage) usage = json.usage;
+                    if (choice.finish_reason) finishReason = choice.finish_reason;
+                }
+            }
+
+            return {
+                finishReason,
+                toolCalls: Object.values(toolCalls).filter(tc => tc.function?.name)
+            };
+        };
+
+        let toolRounds = 0;
+        while (toolRounds < 5) {
+            const result = await streamRound(streamPayload);
+            if (!result) {
+                clearInterval(ping);
+                res.end();
+                return;
+            }
+
+            if (result.toolCalls.length === 0) break;
+
+            // Execute requested tools, then continue streaming with results
+            const assistantMsg = { role: 'assistant', content: fullContent || null, tool_calls: result.toolCalls.map(tc => ({ type: 'function', ...tc })) };
+            finalMessages.push(assistantMsg);
+            for (const tc of result.toolCalls) {
+                const fnName = tc.function.name;
+                const fnArgs = JSON.parse(tc.function.arguments || '{}');
+                const toolOutput = await executeToolCall(fnName, fnArgs);
+                executedTools.push({ name: fnName, args: fnArgs, result: toolOutput });
+                send('meta', { executedTools: [executedTools[executedTools.length - 1]] });
+                finalMessages.push({ role: 'tool', tool_call_id: tc.id, content: toolOutput });
+            }
+            streamPayload = { ...streamPayload, messages: finalMessages };
+            toolRounds++;
         }
 
-        if (searchResults.length > 0) {
-            data.searchResults = searchResults;
+        // Final metadata + cost summary
+        let estimatedCostUSD = null;
+        if (usage) {
+            const inputCost = ((usage.prompt_tokens || 0) / 1_000_000) * 0.14;
+            const outputCost = ((usage.completion_tokens || 0) / 1_000_000) * 0.28;
+            estimatedCostUSD = (inputCost + outputCost).toFixed(6);
         }
-        if (scrapedContent) {
-            data.scrapedContent = scrapedContent;
-        }
-        if (executedTools.length > 0) {
-            data.executedTools = executedTools;
-        }
-
-        // Attach token usage and estimated cost
-        if (data.usage) {
-            const { prompt_tokens = 0, completion_tokens = 0, total_tokens = 0 } = data.usage;
-            // DeepSeek pricing: input $0.14/1M tokens, output $0.28/1M tokens
-            const inputCost = (prompt_tokens / 1_000_000) * 0.14;
-            const outputCost = (completion_tokens / 1_000_000) * 0.28;
-            data.tokenUsage = { prompt_tokens, completion_tokens, total_tokens };
-            data.estimatedCostUSD = (inputCost + outputCost).toFixed(6);
-        }
-        res.status(response.status).json(data);
+        send('done', {
+            content: fullContent,
+            tokenUsage: usage ? {
+                prompt_tokens: usage.prompt_tokens || 0,
+                completion_tokens: usage.completion_tokens || 0,
+                total_tokens: usage.total_tokens || 0
+            } : null,
+            estimatedCostUSD,
+            searchResults: searchResults.length > 0 ? searchResults : null,
+            scrapedContent: scrapedContent || null,
+            executedTools: executedTools.length > 0 ? executedTools : null
+        });
+        clearInterval(ping);
+        res.end();
     } catch (error) {
         console.error('DeepSeek chat error:', error);
-        res.status(500).json({ error: 'Failed to generate chat response' });
+        try {
+            sseSend(res, 'error', { error: 'Failed to generate chat response' });
+            res.end();
+        } catch (e) { /* ignore */ }
     }
 });
 
-// Proxy Ollama Chat Completions
+// Proxy Ollama Chat Completions (with SSE streaming)
 app.post('/api/ollama/chat', async (req, res) => {
     try {
         const serverConfig = getServerConfig();
         const authHeader = req.headers.authorization || (serverConfig.ollama ? `Bearer ${serverConfig.ollama}` : '');
         const { model, messages } = req.body;
 
-        // Try Ollama Cloud or local endpoint
+        sseHeaders(res);
+        const upstream = new AbortController();
+        res.on('close', () => upstream.abort());
+
         const response = await fetch('https://ollama.com/api/chat', {
             method: 'POST',
             headers: {
@@ -540,15 +637,57 @@ app.post('/api/ollama/chat', async (req, res) => {
             body: JSON.stringify({
                 model: model || 'llama3',
                 messages: messages,
-                stream: false
-            })
+                stream: true
+            }),
+            signal: upstream.signal
         });
 
-        const data = await response.json();
-        res.status(response.status).json(data);
+        if (!response.ok || !response.body) {
+            const errText = await response.text().catch(() => '');
+            sseSend(res, 'error', { error: `Ollama API error (${response.status}): ${errText}` });
+            return res.end();
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let fullContent = '';
+        let evalCount = 0;
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop();
+            for (const line of lines) {
+                if (!line.trim()) continue;
+                try {
+                    const json = JSON.parse(line);
+                    if (json.message?.content) {
+                        fullContent += json.message.content;
+                        sseSend(res, 'delta', { content: json.message.content });
+                    }
+                    if (json.eval_count) evalCount = json.eval_count;
+                } catch (e) { /* ignore malformed line */ }
+            }
+        }
+
+        sseSend(res, 'done', {
+            content: fullContent,
+            tokenUsage: evalCount ? { prompt_tokens: 0, completion_tokens: evalCount, total_tokens: evalCount } : null,
+            estimatedCostUSD: null,
+            searchResults: null,
+            scrapedContent: null,
+            executedTools: null
+        });
+        res.end();
     } catch (error) {
         console.error('Ollama chat error:', error);
-        res.status(500).json({ error: 'Failed to generate Ollama chat response' });
+        try {
+            sseSend(res, 'error', { error: 'Failed to generate Ollama chat response' });
+            res.end();
+        } catch (e) { /* ignore */ }
     }
 });
 

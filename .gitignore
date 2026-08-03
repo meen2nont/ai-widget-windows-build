@@ -1,0 +1,5 @@
+# Tooling artifacts
+.impeccable/
+
+# Runtime data
+WebDashboard/data/
