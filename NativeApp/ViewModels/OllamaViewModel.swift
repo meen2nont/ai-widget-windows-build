@@ -30,8 +30,8 @@ class OllamaViewModel: ObservableObject {
     }
     
     // Real API Usage Data from https://ollama.com/api/usage
-    @Published var sessionUsagePercent: Int = 0
-    @Published var weeklyUsagePercent: Int = 0
+    @Published var sessionUsagePercent: Double = 0.0
+    @Published var weeklyUsagePercent: Double = 0.0
     @Published var cloudCost: String = "$0.00"
     
     @Published var cloudModels: [OllamaModelItem] = []
@@ -52,12 +52,12 @@ class OllamaViewModel: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
     private var refreshTimer: Timer?
     
-    var sessionRemainingPercent: Int {
-        return max(0, 100 - sessionUsagePercent)
+    var sessionRemainingPercent: Double {
+        return max(0, 100.0 - sessionUsagePercent)
     }
     
-    var weeklyRemainingPercent: Int {
-        return max(0, 100 - weeklyUsagePercent)
+    var weeklyRemainingPercent: Double {
+        return max(0, 100.0 - weeklyUsagePercent)
     }
     
     init() {
@@ -69,7 +69,7 @@ class OllamaViewModel: ObservableObject {
         self.selectedOllamaModel = UserDefaults.standard.string(forKey: "SelectedOllamaModel") ?? ""
         fetchData()
         startAutoRefresh()
-        AppDelegate.shared?.updateOllamaTitle(sessionPercent: self.sessionUsagePercent)
+        AppDelegate.shared?.updateOllamaTitle(sessionPercent: Int(self.sessionUsagePercent))
     }
     
     func startAutoRefresh() {
@@ -103,23 +103,23 @@ class OllamaViewModel: ObservableObject {
             .sink(receiveCompletion: { _ in }, receiveValue: { [weak self] res in
                 guard let self = self else { return }
                 if let sess = res.limits?.session?.usage {
-                    self.sessionUsagePercent = sess
+                    self.sessionUsagePercent = sess * 100.0
                     let remaining = self.sessionRemainingPercent
-                    if remaining <= APIConstants.Ollama.lowSessionQuotaThresholdPercent {
+                    if remaining <= Double(APIConstants.Ollama.lowSessionQuotaThresholdPercent) {
                         NotificationService.shared.sendNotification(
                             identifier: "low_ollama_session_quota",
                             title: "⚠️ Ollama Cloud Quota Low",
-                            body: "Your 5-hour session quota is at \(remaining)% remaining."
+                            body: "Your 5-hour session quota is at \(String(format: "%.1f", remaining))% remaining."
                         )
                     }
                 }
                 if let wk = res.limits?.weekly?.usage {
-                    self.weeklyUsagePercent = wk
+                    self.weeklyUsagePercent = wk * 100.0
                 }
                 if let cost = res.activity?.cost {
                     self.cloudCost = cost
                 }
-                AppDelegate.shared?.updateOllamaTitle(sessionPercent: self.sessionUsagePercent)
+                AppDelegate.shared?.updateOllamaTitle(sessionPercent: Int(self.sessionUsagePercent))
             })
             .store(in: &cancellables)
     }

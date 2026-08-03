@@ -64,7 +64,7 @@ namespace AIWidgetWindowsApp.Models
             public class WindowInfo
             {
                 [JsonPropertyName("usage")]
-                public int? Usage { get; set; }
+                public double? Usage { get; set; }
             }
 
             [JsonPropertyName("session")]

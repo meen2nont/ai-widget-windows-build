@@ -33,10 +33,10 @@ namespace AIWidgetWindowsApp.ViewModels
         private int refreshInterval = 60;
 
         [ObservableProperty]
-        private int sessionUsagePercent = 0;
+        private double sessionUsagePercent = 0.0;
 
         [ObservableProperty]
-        private int weeklyUsagePercent = 0;
+        private double weeklyUsagePercent = 0.0;
 
         [ObservableProperty]
         private string cloudCost = "$0.00";
@@ -70,8 +70,8 @@ namespace AIWidgetWindowsApp.ViewModels
         [ObservableProperty]
         private bool copySuccess = false;
 
-        public int SessionRemainingPercent => Math.Max(0, 100 - SessionUsagePercent);
-        public int WeeklyRemainingPercent => Math.Max(0, 100 - WeeklyUsagePercent);
+        public double SessionRemainingPercent => Math.Max(0, 100.0 - SessionUsagePercent);
+        public double WeeklyRemainingPercent => Math.Max(0, 100.0 - WeeklyUsagePercent);
 
         public OllamaViewModel()
         {
@@ -108,12 +108,12 @@ namespace AIWidgetWindowsApp.ViewModels
                     {
                         if (res.Limits?.Session?.Usage.HasValue == true)
                         {
-                            SessionUsagePercent = res.Limits.Session.Usage.Value;
+                            SessionUsagePercent = res.Limits.Session.Usage.Value * 100.0;
                             OnPropertyChanged(nameof(SessionRemainingPercent));
                         }
                         if (res.Limits?.Weekly?.Usage.HasValue == true)
                         {
-                            WeeklyUsagePercent = res.Limits.Weekly.Usage.Value;
+                            WeeklyUsagePercent = res.Limits.Weekly.Usage.Value * 100.0;
                             OnPropertyChanged(nameof(WeeklyRemainingPercent));
                         }
                         if (res.Activity?.Cost != null)
@@ -121,7 +121,7 @@ namespace AIWidgetWindowsApp.ViewModels
                             CloudCost = res.Activity.Cost;
                         }
                         
-                        UpdateMainWindow($"{SessionUsagePercent}% Session");
+                        UpdateMainWindow($"{SessionUsagePercent:F1}% Session");
                     }
                 }
             }

@@ -75,7 +75,7 @@ struct OllamaPopoverView: View {
                         Text("Session usage")
                             .font(.system(size: 10, weight: .medium))
                         Spacer()
-                        Text("\(vm.sessionUsagePercent)% used")
+                        Text("\(String(format: "%.1f", vm.sessionUsagePercent))% used")
                             .font(.system(size: 9, weight: .semibold))
                             .foregroundColor(.primary)
                     }
@@ -102,7 +102,7 @@ struct OllamaPopoverView: View {
                         Text("Weekly usage")
                             .font(.system(size: 10, weight: .medium))
                         Spacer()
-                        Text("\(vm.weeklyUsagePercent)% used")
+                        Text("\(String(format: "%.1f", vm.weeklyUsagePercent))% used")
                             .font(.system(size: 9, weight: .semibold))
                             .foregroundColor(.primary)
                     }

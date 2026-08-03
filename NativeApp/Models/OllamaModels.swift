@@ -73,7 +73,7 @@ struct OllamaPayAccounting: Codable {
 struct OllamaUsageResponse: Codable {
     struct Limits: Codable {
         struct WindowInfo: Codable {
-            let usage: Int?
+            let usage: Double?
         }
         let session: WindowInfo?
         let weekly: WindowInfo?

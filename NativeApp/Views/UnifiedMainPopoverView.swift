@@ -282,10 +282,10 @@ struct UnifiedMainPopoverView: View {
                     Spacer()
                     
                     VStack(alignment: .trailing, spacing: 1) {
-                        Text("\(olVM.sessionUsagePercent)% Session")
+                        Text("\(String(format: "%.1f", olVM.sessionUsagePercent))% Session")
                             .font(.system(size: 13, weight: .bold, design: .rounded))
                             .foregroundColor(.primary)
-                        Text("Weekly: \(olVM.weeklyUsagePercent)% used")
+                        Text("Weekly: \(String(format: "%.1f", olVM.weeklyUsagePercent))% used")
                             .font(.system(size: 9))
                             .foregroundColor(.secondary)
                     }

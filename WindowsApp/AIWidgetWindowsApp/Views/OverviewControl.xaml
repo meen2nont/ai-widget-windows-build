@@ -40,8 +40,8 @@
                 </StackPanel>
                 
                 <StackPanel Grid.Column="1" HorizontalAlignment="Right">
-                    <TextBlock Text="{Binding OllamaVM.SessionUsagePercent, StringFormat={}{0}% Session}" Foreground="White" FontWeight="Bold" FontSize="13" TextAlignment="Right"/>
-                    <TextBlock Text="{Binding OllamaVM.WeeklyUsagePercent, StringFormat=Weekly: {0}% used}" Foreground="Gray" FontSize="10" TextAlignment="Right"/>
+                    <TextBlock Text="{Binding OllamaVM.SessionUsagePercent, StringFormat={}{0:F1}% Session}" Foreground="White" FontWeight="Bold" FontSize="13" TextAlignment="Right"/>
+                    <TextBlock Text="{Binding OllamaVM.WeeklyUsagePercent, StringFormat=Weekly: {0:F1}% used}" Foreground="Gray" FontSize="10" TextAlignment="Right"/>
                 </StackPanel>
             </Grid>
         </Border>

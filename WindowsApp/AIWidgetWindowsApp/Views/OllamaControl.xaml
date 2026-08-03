@@ -32,14 +32,14 @@
         <ProgressBar Style="{StaticResource NeutralProgressBar}" 
                      Value="{Binding SessionUsagePercent}" Maximum="100" 
                      Height="6" Margin="0,0,0,2"/>
-        <TextBlock Text="{Binding SessionUsagePercent, StringFormat={}{0}% used}" Foreground="White" FontSize="10" HorizontalAlignment="Right" Margin="0,-15,0,10"/>
+        <TextBlock Text="{Binding SessionUsagePercent, StringFormat={}{0:F1}% used}" Foreground="White" FontSize="10" HorizontalAlignment="Right" Margin="0,-15,0,10"/>
         
         <!-- Weekly Usage Bar -->
         <TextBlock Text="Weekly usage" Foreground="White" FontSize="11" Margin="0,0,0,2"/>
         <ProgressBar Style="{StaticResource NeutralProgressBar}" 
                      Value="{Binding WeeklyUsagePercent}" Maximum="100" 
                      Height="6" Margin="0,0,0,2"/>
-        <TextBlock Text="{Binding WeeklyUsagePercent, StringFormat={}{0}% used}" Foreground="White" FontSize="10" HorizontalAlignment="Right" Margin="0,-15,0,10"/>
+        <TextBlock Text="{Binding WeeklyUsagePercent, StringFormat={}{0:F1}% used}" Foreground="White" FontSize="10" HorizontalAlignment="Right" Margin="0,-15,0,10"/>
         
         <TextBox Text="{Binding PromptText, UpdateSourceTrigger=PropertyChanged}" 
                  Height="60" TextWrapping="Wrap" AcceptsReturn="True" 
