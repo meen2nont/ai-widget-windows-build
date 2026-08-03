@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 import { 
-  Settings, Server, Cloud, CreditCard, 
-  RefreshCw, CheckCircle2, XCircle, Zap, Activity,
+  Settings, RefreshCw, CheckCircle2, XCircle, Zap, Activity,
   MessageSquare, LayoutGrid, List, Copy, Send, ExternalLink, Clock, ShieldCheck, Lock
 } from 'lucide-react';
+import { DeepSeekIcon, OllamaIcon, OllamaPayIcon } from './components/AIIcons';
 import { encryptAndSaveConfig, loadAndDecryptConfig } from './utils/crypto';
 import './index.css';
 
@@ -285,14 +285,11 @@ function App() {
 
   return (
     <div className="container">
-      <div className="ambient-glow-1"></div>
-      <div className="ambient-glow-2"></div>
-
       {/* Header */}
       <header>
         <div className="brand-title">
-          <Zap size={32} style={{ color: '#818cf8' }} />
-          <h1>AI Quota Dashboard</h1>
+          <Activity size={26} style={{ color: '#2f81f7' }} />
+          <h1>AI Service Monitoring</h1>
         </div>
 
         <div className="header-actions">
@@ -351,7 +348,7 @@ function App() {
 
         <div className="summary-card">
           <div className="summary-icon-box emerald">
-            <Server />
+            <DeepSeekIcon size={24} style={{ color: '#34d399' }} />
           </div>
           <div>
             <div className="summary-label">DeepSeek Balance</div>
@@ -361,7 +358,7 @@ function App() {
 
         <div className="summary-card">
           <div className="summary-icon-box cyan">
-            <Cloud />
+            <OllamaIcon size={24} style={{ color: '#38bdf8' }} />
           </div>
           <div>
             <div className="summary-label">Ollama Session</div>
@@ -371,7 +368,7 @@ function App() {
 
         <div className="summary-card">
           <div className="summary-icon-box amber">
-            <CreditCard />
+            <OllamaPayIcon size={24} style={{ color: '#fbbf24' }} />
           </div>
           <div>
             <div className="summary-label">Ollama Pay Today</div>
@@ -387,7 +384,7 @@ function App() {
           <div className="glass-card">
             <div className="card-header">
               <div className="card-title-group">
-                <Server className="icon" style={{ color: '#818cf8' }} />
+                <DeepSeekIcon size={24} style={{ color: '#818cf8' }} />
                 <h2 className="card-title">DeepSeek AI</h2>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -422,7 +419,7 @@ function App() {
           <div className="glass-card">
             <div className="card-header">
               <div className="card-title-group">
-                <Cloud className="icon" style={{ color: '#38bdf8' }} />
+                <OllamaIcon size={24} style={{ color: '#38bdf8' }} />
                 <h2 className="card-title">Ollama Cloud</h2>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -476,7 +473,7 @@ function App() {
           <div className="glass-card">
             <div className="card-header">
               <div className="card-title-group">
-                <CreditCard className="icon" style={{ color: '#fbbf24' }} />
+                <OllamaPayIcon size={24} style={{ color: '#fbbf24' }} />
                 <h2 className="card-title">Ollama Pay</h2>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
