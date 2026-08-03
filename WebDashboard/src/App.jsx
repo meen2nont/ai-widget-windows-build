@@ -129,8 +129,8 @@ function App() {
             const bal = json.balance_infos?.[0]?.total_balance || '0.00';
             const curr = json.balance_infos?.[0]?.currency || 'USD';
             
-            // Calculate daily spend estimation
-            const todayStr = new Date().toISOString().split('T')[0];
+            // Calculate daily spend estimation (Thailand Timezone)
+            const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' });
             const savedDate = localStorage.getItem('ds_spend_date');
             const startBal = localStorage.getItem('ds_start_bal') || bal;
             let spent = '0.0000';
@@ -258,15 +258,16 @@ function App() {
   };
 
   const copyStatsToClipboard = () => {
+    const thaiTimeStr = new Date().toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' });
     const summary = `
-📊 AI Quota Dashboard Summary (${new Date().toLocaleString()})
+📊 AI Service Monitoring Summary (${thaiTimeStr} น.)
 -----------------------------------------
 🔹 DeepSeek: $${data.deepseek.balance} ${data.deepseek.currency} (Spent today: $${data.deepseek.spentToday})
-☁️ Ollama Cloud: Session ${data.data?.ollama?.sessionPercent?.toFixed(1) || data.ollama.sessionPercent.toFixed(1)}% | Weekly ${data.ollama.weeklyPercent.toFixed(1)}% | Cost: ${data.ollama.cost}
+☁️ Ollama Cloud: Session ${data.ollama.sessionPercent.toFixed(1)}% | Weekly ${data.ollama.weeklyPercent.toFixed(1)}% | Cost: ${data.ollama.cost}
 💳 Ollama Pay: Remaining ${data.ollamaPay.tokensRemaining.toLocaleString()} tokens | Today: ${data.ollamaPay.todayTokens.toLocaleString()}
     `.trim();
     navigator.clipboard.writeText(summary);
-    showToast('Summary copied to clipboard!');
+    showToast('คัดลอกสรุปโควต้าแล้ว!');
   };
 
   useEffect(() => {
@@ -295,7 +296,7 @@ function App() {
         <div className="header-actions">
           <div className="latency-tag" style={{ padding: '0.4rem 0.75rem', borderRadius: '10px' }}>
             <Clock size={14} />
-            <span>Updated {lastRefreshed.toLocaleTimeString()}</span>
+            <span>อัปเดตเมื่อ {lastRefreshed.toLocaleTimeString('th-TH', { timeZone: 'Asia/Bangkok' })} น.</span>
           </div>
 
           <button className="secondary" onClick={() => copyStatsToClipboard()} title="Copy Markdown Summary">
@@ -640,7 +641,7 @@ function App() {
         <div className="modal-overlay">
           <div className="modal-card">
             <h2 style={{ marginTop: 0, marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <Settings size={22} style={{ color: '#818cf8' }} /> Dashboard Configuration
+              <Settings size={22} style={{ color: '#2f81f7' }} /> ตั้งค่าระบบแดชบอร์ด
             </h2>
 
             <div style={{ 
@@ -649,14 +650,14 @@ function App() {
               gap: '0.5rem', 
               marginBottom: '1.5rem', 
               padding: '0.5rem 0.85rem', 
-              background: 'rgba(16, 185, 129, 0.12)', 
-              border: '1px solid rgba(16, 185, 129, 0.25)', 
-              borderRadius: '10px', 
+              background: 'rgba(35, 134, 54, 0.15)', 
+              border: '1px solid rgba(35, 134, 54, 0.3)', 
+              borderRadius: '8px', 
               fontSize: '0.8rem', 
-              color: '#34d399' 
+              color: '#3fb950' 
             }}>
               <ShieldCheck size={16} />
-              <span>API Keys are encrypted with <strong>AES-256 (AES-GCM) JSON</strong> in LocalStorage.</span>
+              <span>บันทึก API Keys ปลอดภัยเป็นไฟล์ JSON บน Server และซิงค์กับ LocalStorage</span>
             </div>
 
             <form onSubmit={handleSaveKeys}>
@@ -691,25 +692,25 @@ function App() {
               </div>
 
               <div className="form-group">
-                <label>Auto-Refresh Interval</label>
+                <label>รอบเวลาอัปเดตอัตโนมัติ (Refresh Interval)</label>
                 <select 
                   value={refreshInterval} 
                   onChange={e => setRefreshInterval(Number(e.target.value))}
                 >
-                  <option value={15}>Every 15 Seconds</option>
-                  <option value={30}>Every 30 Seconds</option>
-                  <option value={60}>Every 1 Minute</option>
-                  <option value={300}>Every 5 Minutes</option>
-                  <option value={0}>Manual Only</option>
+                  <option value={15}>ทุกๆ 15 วินาที</option>
+                  <option value={30}>ทุกๆ 30 วินาที</option>
+                  <option value={60}>ทุกๆ 1 นาที (แนะนำ)</option>
+                  <option value={300}>ทุกๆ 5 นาที</option>
+                  <option value={0}>อัปเดตด้วยตนเองเท่านั้น</option>
                 </select>
               </div>
 
               <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end', marginTop: '2rem' }}>
                 <button type="button" className="secondary" onClick={() => setShowSettings(false)}>
-                  Cancel
+                  ยกเลิก
                 </button>
                 <button type="submit" className="primary">
-                  Save Changes
+                  บันทึกการตั้งค่า
                 </button>
               </div>
             </form>
