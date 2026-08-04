@@ -7,8 +7,9 @@ DEST_DIR="/opt/ai-widget-dashboard"
 
 echo "Deploying to $SERVER..."
 
-# Rsync the files, excluding node_modules and dist
-rsync -avz --exclude 'node_modules' --exclude '.git' --exclude 'dist' ./ "$SERVER:$DEST_DIR"
+# Rsync the files, excluding node_modules, dist, and data (DB lives in the
+# ai-widget-data volume — never overwrite the remote DB with the local copy)
+rsync -avz --exclude 'node_modules' --exclude '.git' --exclude 'dist' --exclude 'data' ./ "$SERVER:$DEST_DIR"
 
 # SSH in and restart the docker container
 ssh "$SERVER" "cd $DEST_DIR && \
