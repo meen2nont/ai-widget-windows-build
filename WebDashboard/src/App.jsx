@@ -1075,7 +1075,7 @@ function App() {
       {/* Header */}
       <header>
         <div className="brand-title">
-          <Activity size={26} style={{ color: 'var(--accent-blue)' }} />
+          <Activity size={26} className="icon-blue" />
           <h1>AI Service Monitoring <span className="build-tag">v{pkg.version}</span></h1>
         </div>
 
@@ -1131,7 +1131,7 @@ function App() {
 
         <div className="summary-card">
           <div className="summary-icon-box emerald">
-            <DeepSeekIcon size={24} style={{ color: 'var(--status-green)' }} />
+            <DeepSeekIcon size={24} className="icon-green" />
           </div>
           <div>
             <div className="summary-label">DeepSeek Balance</div>
@@ -1141,7 +1141,7 @@ function App() {
 
         <div className="summary-card">
           <div className="summary-icon-box cyan">
-            <OllamaIcon size={24} style={{ color: 'var(--accent-blue)' }} />
+            <OllamaIcon size={24} className="icon-blue" />
           </div>
           <div>
             <div className="summary-label">Ollama Session</div>
@@ -1151,7 +1151,7 @@ function App() {
 
         <div className="summary-card">
           <div className="summary-icon-box amber">
-            <OllamaPayIcon size={24} style={{ color: 'var(--status-amber)' }} />
+            <OllamaPayIcon size={24} className="icon-amber" />
           </div>
           <div>
             <div className="summary-label">Ollama Pay Today</div>
@@ -1173,10 +1173,10 @@ function App() {
               <div className="glass-card overview-card">
                 <div className="card-header">
                   <div className="card-title-group">
-                    <DeepSeekIcon size={24} style={{ color: 'var(--status-indigo)' }} />
+                    <DeepSeekIcon size={24} className="icon-indigo" />
                     <h2 className="card-title">DeepSeek AI</h2>
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <div className="row-center">
                     <span className="latency-tag">{data.deepseek.latencyMs} ms</span>
                     {data.deepseek.available ? 
                       <span className="badge success"><CheckCircle2 size={12} /> Online</span> : 
@@ -1208,10 +1208,10 @@ function App() {
               <div className="glass-card overview-card">
                 <div className="card-header">
                   <div className="card-title-group">
-                    <OllamaIcon size={24} style={{ color: 'var(--accent-blue)' }} />
+                    <OllamaIcon size={24} className="icon-blue" />
                     <h2 className="card-title">Ollama Cloud</h2>
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <div className="row-center">
                     <span className="latency-tag">{data.ollama.latencyMs} ms</span>
                     {data.ollama.available ? 
                       <span className="badge success"><CheckCircle2 size={12} /> Online</span> : 
@@ -1223,7 +1223,7 @@ function App() {
                 <div className="progress-container">
                   <div className="progress-header">
                     <span>5-Hour Session Quota Used</span>
-                    <span style={{ fontWeight: 700, color: data.ollama.sessionPercent > 85 ? 'var(--accent-rose)' : 'white' }}>
+                    <span style={{ fontWeight: 700, color: data.ollama.sessionPercent > 85 ? 'var(--status-red)' : 'white' }}>
                       {data.ollama.sessionPercent.toFixed(1)}%
                     </span>
                   </div>
@@ -1250,10 +1250,10 @@ function App() {
               <div className="glass-card overview-card">
                 <div className="card-header">
                   <div className="card-title-group">
-                    <OllamaPayIcon size={24} style={{ color: 'var(--status-amber)' }} />
+                    <OllamaPayIcon size={24} className="icon-amber" />
                     <h2 className="card-title">Ollama Pay</h2>
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <div className="row-center">
                     <span className="latency-tag">{data.ollamaPay.latencyMs} ms</span>
                     {data.ollamaPay.available ? 
                       <span className="badge success"><CheckCircle2 size={12} /> Online</span> : 
@@ -1329,10 +1329,10 @@ function App() {
         <div className="overview-bottom-grid">
           {/* Quick AI Starters Card */}
           <div className="glass-card overview-quick-starters">
-            <div className="card-header" style={{ marginBottom: '0.6rem' }}>
+            <div className="card-header card-header-compact">
               <div className="card-title-group">
-                <BookOpen size={16} style={{ color: 'var(--accent-blue)' }} />
-                <h3 className="card-title" style={{ fontSize: '0.92rem', margin: 0 }}>ทางลัดเริ่มแชทด่วน (Quick Starters)</h3>
+                <BookOpen size={16} className="icon-blue" />
+                <h3 className="card-title">ทางลัดเริ่มแชทด่วน (Quick Starters)</h3>
               </div>
             </div>
             <div className="quick-starters-grid">
@@ -1366,10 +1366,10 @@ function App() {
 
           {/* Recent Activity & Sessions Card */}
           <div className="glass-card overview-recent-activity">
-            <div className="card-header" style={{ marginBottom: '0.6rem' }}>
+            <div className="card-header card-header-compact">
               <div className="card-title-group">
-                <Clock size={16} style={{ color: 'var(--status-purple)' }} />
-                <h3 className="card-title" style={{ fontSize: '0.92rem', margin: 0 }}>บทสนทนาล่าสุด (Recent Activity)</h3>
+                <Clock size={16} className="icon-purple" />
+                <h3 className="card-title">บทสนทนาล่าสุด (Recent Activity)</h3>
               </div>
               <button
                 type="button"
@@ -1399,10 +1399,10 @@ function App() {
 
           {/* Real-time Latency Chart Card */}
           <div className="glass-card overview-latency-chart">
-            <div className="card-header" style={{ marginBottom: '0.6rem' }}>
+            <div className="card-header card-header-compact">
               <div className="card-title-group">
-                <Activity size={16} style={{ color: 'var(--status-green)' }} />
-                <h3 className="card-title" style={{ fontSize: '0.92rem', margin: 0 }}>ความเร็วการตอบสนอง (Latency)</h3>
+                <Activity size={16} className="icon-green" />
+                <h3 className="card-title">ความเร็วการตอบสนอง (Latency)</h3>
               </div>
             </div>
             <div className="latency-chart-list">
@@ -1411,7 +1411,7 @@ function App() {
                   <span className="latency-service-name">DeepSeek API</span>
                   <span className="latency-ms-val">{data.deepseek.latencyMs} ms</span>
                 </div>
-                <div className="progress-track" style={{ height: '6px' }}>
+                <div className="progress-track chart-track">
                   <div
                     className="progress-fill emerald"
                     style={{ transform: `scaleX(${Math.min(1, Math.max(0.08, data.deepseek.latencyMs / 1000))})` }}
@@ -1424,7 +1424,7 @@ function App() {
                   <span className="latency-service-name">Ollama Cloud</span>
                   <span className="latency-ms-val">{data.ollama.latencyMs} ms</span>
                 </div>
-                <div className="progress-track" style={{ height: '6px' }}>
+                <div className="progress-track chart-track">
                   <div
                     className="progress-fill cyan"
                     style={{ transform: `scaleX(${Math.min(1, Math.max(0.08, data.ollama.latencyMs / 1000))})` }}
@@ -1437,7 +1437,7 @@ function App() {
                   <span className="latency-service-name">Ollama Pay</span>
                   <span className="latency-ms-val">{data.ollamaPay.latencyMs} ms</span>
                 </div>
-                <div className="progress-track" style={{ height: '6px' }}>
+                <div className="progress-track chart-track">
                   <div
                     className="progress-fill amber"
                     style={{ transform: `scaleX(${Math.min(1, Math.max(0.08, data.ollamaPay.latencyMs / 1000))})` }}
@@ -1524,9 +1524,9 @@ function App() {
               <div className="chat-header-bar">
                 <div className="chat-header-title-row">
                   <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '1.1rem' }}>
-                    <MessageSquare size={20} style={{ color: 'var(--accent-blue)' }} /> {currentSession.title}
+                    <MessageSquare size={20} className="icon-blue" /> {currentSession.title}
                   </h3>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                  <div className="row-center-sm">
                     {/* Mobile Settings Toggle Button */}
                     <button
                       type="button"
@@ -1775,7 +1775,7 @@ function App() {
                 {streamError && (
                   <div className="message-wrapper assistant">
                     <div className="message-bubble error">
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <div className="row-center">
                         <XCircle size={16} />
                         <span>{streamError}</span>
                       </div>
