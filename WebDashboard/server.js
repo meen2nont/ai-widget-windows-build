@@ -262,6 +262,11 @@ app.get('/api/config', (req, res) => {
             ollama: Boolean(cfg.ollama),
             ollamaPay: Boolean(cfg.ollamaPay)
         },
+        keys: {
+            deepseek: cfg.deepseek || '',
+            ollama: cfg.ollama || '',
+            ollamaPay: cfg.ollamaPay || ''
+        },
         embedModel: cfg.embedModel || 'nomic-embed-text'
     });
 });

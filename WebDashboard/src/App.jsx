@@ -9,7 +9,9 @@ import {
 import { DeepSeekIcon, OllamaIcon, OllamaPayIcon } from './components/AIIcons';
 import { encryptAndSaveConfig, loadAndDecryptConfig } from './utils/crypto';
 import MarkdownMessage from './components/MarkdownMessage';
+import pkg from '../package.json';
 import './index.css';
+
 
 const PERSONAS = {
   general: { name: 'ทั่วไป (General Assistant)', prompt: '', icon: Bot },
@@ -323,25 +325,25 @@ function App() {
   const [lastRefreshed, setLastRefreshed] = useState(new Date());
   const [toastMsg, setToastMsg] = useState('');
 
-  // Load config from server (service availability booleans, NOT actual keys)
-  // and fallback to local encrypted config for the settings form.
+  // Load config from server (including actual keys now that it's authenticated)
+  // and fallback to local encrypted config.
   useEffect(() => {
     async function initKeys() {
-      // 1. Load actual API keys from encrypted localStorage (for settings form)
-      const decryptedKeys = await loadAndDecryptConfig();
+      // 1. Load actual API keys from encrypted localStorage as fallback
+      let decryptedKeys = await loadAndDecryptConfig();
       setKeys(decryptedKeys);
 
-      // 2. If no keys configured, prompt user to set up
-      if (!decryptedKeys.deepseek && !decryptedKeys.ollama && !decryptedKeys.ollamaPay) {
-        showToast('กรุณาตั้งค่า API Key ใน Settings ก่อนใช้งาน');
-      }
-
-      // 3. Fetch service availability from server (no actual keys exposed)
+      // 2. Fetch config and keys from server
       try {
         const res = await fetch('/api/config');
         if (res.ok) {
           const serverConfig = await res.json();
-          // serverConfig = { services: { deepseek: bool, ollama: bool, ollamaPay: bool }, embedModel: '...' }
+          if (serverConfig.keys && (serverConfig.keys.deepseek || serverConfig.keys.ollama || serverConfig.keys.ollamaPay)) {
+            decryptedKeys = { ...decryptedKeys, ...serverConfig.keys };
+            setKeys(k => ({ ...k, ...serverConfig.keys }));
+            // Cache them locally too
+            encryptAndSaveConfig(decryptedKeys);
+          }
           if (serverConfig.embedModel) {
             setKeys(k => ({ ...k, embedModel: serverConfig.embedModel }));
           }
@@ -349,9 +351,17 @@ function App() {
       } catch (e) {
         console.warn('Could not fetch server config', e);
       }
+
+      // 3. If no keys configured at all, prompt user to set up
+      if (!decryptedKeys.deepseek && !decryptedKeys.ollama && !decryptedKeys.ollamaPay) {
+        showToast('กรุณาตั้งค่า API Key ใน Settings ก่อนใช้งาน');
+      }
     }
-    initKeys();
-  }, []);
+    
+    if (authState === 'authenticated') {
+      initKeys();
+    }
+  }, [authState]);
 
   const handleSaveKeys = async (e) => {
     if (e) e.preventDefault();
@@ -1182,7 +1192,7 @@ function App() {
       <header>
         <div className="brand-title">
           <Activity size={26} style={{ color: 'var(--accent-blue)' }} />
-          <h1>AI Service Monitoring <span className="build-tag">v1.0.0</span></h1>
+          <h1>AI Service Monitoring <span className="build-tag">v{pkg.version}</span></h1>
         </div>
 
         <div className="header-actions">
