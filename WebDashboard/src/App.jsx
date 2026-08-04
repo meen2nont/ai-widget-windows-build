@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 import { 
   Settings, RefreshCw, CheckCircle2, XCircle, Activity,
-  MessageSquare, LayoutGrid, List, Copy, Send, Clock, Globe, Search,
+  MessageSquare, LayoutGrid, Copy, Send, Clock, Globe, Search,
   Plus, Trash2, Download, Link2, Pencil, RotateCcw, Paperclip, Wrench, FileText, X,
-  Mic, MicOff, Volume2, VolumeX, BookOpen, DollarSign, ChevronDown, Table,
+  Mic, MicOff, Volume2, VolumeX, BookOpen, DollarSign, ChevronDown,
   Bot, Code, PenLine, Languages, BarChart, Printer, Mail, Brain, LogOut
 } from 'lucide-react';
 import { DeepSeekIcon, OllamaIcon, OllamaPayIcon } from './components/AIIcons';
@@ -211,7 +211,7 @@ function App() {
     Number(localStorage.getItem('refresh_interval')) || 60
   );
 
-  const [activeTab, setActiveTab] = useState('overview'); // 'overview' | 'chat' | 'details'
+  const [activeTab, setActiveTab] = useState('overview'); // 'overview' | 'chat'
   const [activeCardIndex, setActiveCardIndex] = useState(0);
   const carouselRef = useRef(null);
 
@@ -1115,12 +1115,6 @@ function App() {
         >
           <MessageSquare size={18} /> Chat
         </button>
-        <button 
-          className={`tab-button ${activeTab === 'details' ? 'active' : ''}`}
-          onClick={() => setActiveTab('details')}
-        >
-          <List size={18} /> Details
-        </button>
       </div>
 
       {/* Summary Metrics Banner */}
@@ -1931,73 +1925,6 @@ function App() {
           setNewTemplatePrompt={setNewTemplatePrompt}
           saveTemplate={saveTemplate}
         />
-      )}
-
-      {/* TAB 3: DETAILED METRICS TABLE */}
-      {activeTab === 'details' && (
-        <div className="glass-card details-card">
-          <h3 className="details-title">
-            <Table size={15} /> Comprehensive Service Quota Breakdown
-          </h3>
-          <table className="details-table">
-            <thead>
-              <tr>
-                <th>Service</th>
-                <th>Metric / Metric Name</th>
-                <th>Current Value</th>
-                <th>Latency</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td className="details-service" rowSpan={2}>DeepSeek API</td>
-                <td className="details-metric">Total Balance</td>
-                <td className="details-value">${data.deepseek.balance} {data.deepseek.currency}</td>
-                <td className="details-latency">{data.deepseek.latencyMs} ms</td>
-                <td>{data.deepseek.available ? <span className="badge success">OK</span> : <span className="badge error">Error</span>}</td>
-              </tr>
-              <tr>
-                <td className="details-metric">Estimated Spent Today</td>
-                <td className="details-value">${data.deepseek.spentToday}</td>
-                <td className="details-latency">--</td>
-                <td><span className="badge success">OK</span></td>
-              </tr>
-              <tr>
-                <td className="details-service" rowSpan={2}>Ollama Cloud</td>
-                <td className="details-metric">Session Quota Used</td>
-                <td className="details-value">{data.ollama.sessionPercent.toFixed(2)}%</td>
-                <td className="details-latency">{data.ollama.latencyMs} ms</td>
-                <td>{data.ollama.available ? <span className="badge success">OK</span> : <span className="badge error">Error</span>}</td>
-              </tr>
-              <tr>
-                <td className="details-metric">Weekly Usage</td>
-                <td className="details-value">{data.ollama.weeklyPercent.toFixed(2)}%</td>
-                <td className="details-latency">--</td>
-                <td><span className="badge success">OK</span></td>
-              </tr>
-              <tr>
-                <td className="details-service" rowSpan={3}>Ollama Pay</td>
-                <td className="details-metric">Tokens Remaining</td>
-                <td className="details-value">{formatCompact(data.ollamaPay.tokensRemaining)}</td>
-                <td className="details-latency">{data.ollamaPay.latencyMs} ms</td>
-                <td>{data.ollamaPay.available ? <span className="badge success">OK</span> : <span className="badge error">Error</span>}</td>
-              </tr>
-              <tr>
-                <td className="details-metric">Today / Month Requests</td>
-                <td className="details-value">{data.ollamaPay.todayRequests} / {data.ollamaPay.monthRequests}</td>
-                <td className="details-latency">--</td>
-                <td><span className="badge success">OK</span></td>
-              </tr>
-              <tr>
-                <td className="details-metric">Today PloyJoy Tokens</td>
-                <td className="details-value">{formatCompact(data.ollamaPay.todayPloyJoyTokens)}</td>
-                <td className="details-latency">--</td>
-                <td><span className="badge success">OK</span></td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
       )}
 
       {/* Modal Settings */}

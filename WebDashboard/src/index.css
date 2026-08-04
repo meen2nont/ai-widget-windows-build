@@ -620,74 +620,6 @@ button.secondary:active {
   border: 1px solid rgba(218, 54, 51, 0.4);
 }
 
-/* Details tab - compact metrics table */
-.details-card {
-  overflow-x: auto;
-}
-
-.details-title {
-  margin: 0 0 0.75rem;
-  font-size: 0.95rem;
-  font-weight: 600;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.details-title svg {
-  color: #2f81f7;
-}
-
-.details-table {
-  width: 100%;
-  border-collapse: collapse;
-  text-align: left;
-  min-width: 480px;
-}
-
-.details-table th {
-  padding: 0.4rem 0.6rem;
-  border-bottom: 1px solid var(--glass-border);
-  color: var(--text-muted);
-  font-size: 0.68rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  white-space: nowrap;
-}
-
-.details-table td {
-  padding: 0.4rem 0.6rem;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-  font-size: 0.8rem;
-  vertical-align: top;
-}
-
-.details-service {
-  font-weight: 600;
-  white-space: nowrap;
-}
-
-.details-metric {
-  color: var(--text-secondary);
-}
-
-.details-value {
-  font-variant-numeric: tabular-nums;
-  color: var(--text-primary);
-  white-space: nowrap;
-}
-
-.details-latency {
-  color: var(--text-muted);
-  white-space: nowrap;
-}
-
-.details-table .badge {
-  font-size: 0.7rem;
-  padding: 0.12rem 0.45rem;
-}
-
 /* AI Playground Chat Widget - Professional Enterprise Layout */
 /* AI Playground Chat Widget - Apple HIG Layout */
 .chat-widget {
@@ -2468,33 +2400,6 @@ button.secondary:hover {
     height: 100dvh;
     box-shadow: none;
     padding: 1.25rem;
-  }
-
-  /* Overview & Details Mobile Optimizations */
-  .details-card {
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    padding: 0.85rem;
-    border-radius: 12px;
-  }
-
-  .details-title {
-    font-size: 0.9rem;
-    margin-bottom: 0.75rem;
-  }
-
-  .details-table {
-    min-width: 440px;
-  }
-
-  .details-table th {
-    padding: 0.35rem 0.5rem;
-    font-size: 0.64rem;
-  }
-
-  .details-table td {
-    padding: 0.35rem 0.5rem;
-    font-size: 0.76rem;
   }
 }
 
