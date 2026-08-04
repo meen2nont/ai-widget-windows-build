@@ -9,6 +9,8 @@ services:
     volumes:
       - ai-widget-data:/app/data
     restart: unless-stopped
+    env_file:
+      - .env
     environment:
       - PORT=9000
 
