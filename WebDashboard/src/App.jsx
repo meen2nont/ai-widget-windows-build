@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { 
   Settings, RefreshCw, CheckCircle2, XCircle, Activity,
   MessageSquare, LayoutGrid, Copy, Send, Clock, Globe, Search,
-  Plus, Trash2, Download, Link2, Pencil, RotateCcw, Paperclip, Wrench, FileText, X,
+  Plus, Trash2, Download, Link2, Pencil, RotateCcw, Paperclip, Wrench, FileText, X, Check,
   Mic, MicOff, Volume2, VolumeX, BookOpen, DollarSign, ChevronDown,
   Bot, Code, PenLine, Languages, BarChart, Printer, Mail, Brain, LogOut
 } from 'lucide-react';
@@ -390,6 +390,27 @@ function App() {
   ]);
   const sessionsRef = useRef(null);
   const [activeSessionId, setActiveSessionId] = useState('default-session');
+  const [editingSessionId, setEditingSessionId] = useState(null);
+  const [editingSessionTitle, setEditingSessionTitle] = useState('');
+
+  const handleStartRenameSession = (session, e) => {
+    if (e) e.stopPropagation();
+    setEditingSessionId(session.id);
+    setEditingSessionTitle(session.title);
+  };
+
+  const handleSaveRenameSession = (id) => {
+    const trimmed = editingSessionTitle.trim();
+    if (trimmed) {
+      setSessions(prev => {
+        const next = prev.map(s => s.id === id ? { ...s, title: trimmed } : s);
+        localStorage.setItem('ai_chat_sessions', JSON.stringify(next));
+        return next;
+      });
+    }
+    setEditingSessionId(null);
+    setEditingSessionTitle('');
+  };
   const [chatPane, setChatPane] = useState('chat');
   const [promptInput, setPromptInput] = useState('');
   const [selectedModel, setSelectedModel] = useState('auto');
@@ -1034,13 +1055,13 @@ function App() {
     // Update local state immediately via functional update
     setSessions(prevSessions => {
       const next = prevSessions.map(s =>
-        s.id === activeSessionId ? { ...s, messages: [...s.messages, userMsgObj], title: s.messages.length <= 1 ? (userText ? userText.substring(0, 20) : 'แนบไฟล์') : s.title } : s
+        s.id === activeSessionId ? { ...s, messages: [...s.messages, userMsgObj], title: s.messages.length <= 1 ? (userText ? userText.substring(0, 100).trim() : 'แนบไฟล์') : s.title } : s
       );
       return next;
     });
     const baseSessions = sessionsRef.current || sessions;
     const updatedSessions = baseSessions.map(s =>
-      s.id === activeSessionId ? { ...s, messages: [...s.messages, userMsgObj], title: s.messages.length <= 1 ? (userText ? userText.substring(0, 20) : 'แนบไฟล์') : s.title } : s
+      s.id === activeSessionId ? { ...s, messages: [...s.messages, userMsgObj], title: s.messages.length <= 1 ? (userText ? userText.substring(0, 100).trim() : 'แนบไฟล์') : s.title } : s
     );
     localStorage.setItem('ai_chat_sessions', JSON.stringify(updatedSessions));
 
@@ -1357,6 +1378,30 @@ function App() {
                   </div>
                 </div>
 
+                <div className="progress-section">
+                  <div className="progress-container">
+                    <div className="progress-header">
+                      <span>Credit Composition</span>
+                      <span>
+                        {(() => {
+                          const total = parseFloat(data.deepseek.granted) + parseFloat(data.deepseek.toppedUp);
+                          if (!total) return '—';
+                          return `${((parseFloat(data.deepseek.toppedUp) / total) * 100).toFixed(0)}% topped-up`;
+                        })()}
+                      </span>
+                    </div>
+                    <div className="progress-track">
+                      <div
+                        className="progress-fill indigo"
+                        style={{ transform: `scaleX(${(() => {
+                          const total = parseFloat(data.deepseek.granted) + parseFloat(data.deepseek.toppedUp);
+                          return total ? Math.min((parseFloat(data.deepseek.toppedUp) / total), 1) : 0;
+                        })()})` }}
+                      />
+                    </div>
+                  </div>
+                </div>
+
                 <div className="sub-grid">
                   <div className="sub-stat-box">
                     <div className="sub-stat-label">Spent Today</div>
@@ -1372,26 +1417,8 @@ function App() {
                   </div>
                 </div>
 
-                <div className="progress-container">
-                  <div className="progress-header">
-                    <span>Credit Composition</span>
-                    <span>
-                      {(() => {
-                        const total = parseFloat(data.deepseek.granted) + parseFloat(data.deepseek.toppedUp);
-                        if (!total) return '—';
-                        return `${((parseFloat(data.deepseek.toppedUp) / total) * 100).toFixed(0)}% topped-up`;
-                      })()}
-                    </span>
-                  </div>
-                  <div className="progress-track">
-                    <div
-                      className="progress-fill indigo"
-                      style={{ transform: `scaleX(${(() => {
-                        const total = parseFloat(data.deepseek.granted) + parseFloat(data.deepseek.toppedUp);
-                        return total ? Math.min((parseFloat(data.deepseek.toppedUp) / total), 1) : 0;
-                      })()})` }}
-                    />
-                  </div>
+                <div className="period-line">
+                  Billing: Prepaid Balance
                 </div>
               </div>
 
@@ -1411,28 +1438,37 @@ function App() {
                   </div>
                 </div>
 
-                <div className="progress-container">
-                  <div className="progress-header">
-                    <span>5-Hour Session Quota Used</span>
-                    <span style={{ fontWeight: 700, color: data.ollama.sessionPercent > 85 ? 'var(--status-red)' : 'white' }}>
-                      {data.ollama.sessionPercent.toFixed(1)}%
-                    </span>
-                  </div>
-                  <div className="progress-track">
-                    <div 
-                      className={`progress-fill ${data.ollama.sessionPercent > 85 ? 'amber' : 'indigo'}`} 
-                      style={{ transform: `scaleX(${Math.min(data.ollama.sessionPercent, 100) / 100})` }} 
-                    />
+                <div className="metric-row">
+                  <div>
+                    <div className="stat-label">Session Quota Free</div>
+                    <div className="metric-value-huge">{(100 - data.ollama.sessionPercent).toFixed(1)}% <span className="metric-unit">Free</span></div>
                   </div>
                 </div>
 
-                <div className="progress-container">
-                  <div className="progress-header">
-                    <span>Weekly Limit Used</span>
-                    <span>{data.ollama.weeklyPercent.toFixed(1)}%</span>
+                <div className="progress-section">
+                  <div className="progress-container">
+                    <div className="progress-header">
+                      <span>5-Hour Session Quota Used</span>
+                      <span style={{ fontWeight: 700, color: data.ollama.sessionPercent > 85 ? 'var(--status-red)' : 'var(--text-primary)' }}>
+                        {data.ollama.sessionPercent.toFixed(1)}%
+                      </span>
+                    </div>
+                    <div className="progress-track">
+                      <div 
+                        className={`progress-fill ${data.ollama.sessionPercent > 85 ? 'amber' : 'indigo'}`} 
+                        style={{ transform: `scaleX(${Math.min(data.ollama.sessionPercent, 100) / 100})` }} 
+                      />
+                    </div>
                   </div>
-                  <div className="progress-track">
-                    <div className="progress-fill emerald" style={{ transform: `scaleX(${Math.min(data.ollama.weeklyPercent, 100) / 100})` }} />
+
+                  <div className="progress-container">
+                    <div className="progress-header">
+                      <span>Weekly Limit Used</span>
+                      <span>{data.ollama.weeklyPercent.toFixed(1)}%</span>
+                    </div>
+                    <div className="progress-track">
+                      <div className="progress-fill emerald" style={{ transform: `scaleX(${Math.min(data.ollama.weeklyPercent, 100) / 100})` }} />
+                    </div>
                   </div>
                 </div>
 
@@ -1446,6 +1482,7 @@ function App() {
                     <div className="sub-stat-value">{data.ollama.activeModels}</div>
                   </div>
                 </div>
+
                 <div className="period-line">
                   Period: {formatPeriod(data.ollama.periodStart)} → {formatPeriod(data.ollama.periodEnd)}
                 </div>
@@ -1470,21 +1507,23 @@ function App() {
                 <div className="metric-row">
                   <div>
                     <div className="stat-label">Tokens Remaining</div>
-                    <div className="metric-value-huge">{formatCompact(data.ollamaPay.tokensRemaining)}</div>
+                    <div className="metric-value-huge">{formatCompact(data.ollamaPay.tokensRemaining)} <span className="metric-unit">Tokens</span></div>
                   </div>
                 </div>
 
-                <div className="progress-container">
-                  <div className="progress-header">
-                    <span>Quota Remaining</span>
-                    <span>
-                      {data.ollamaPay.totalTokens ? ((data.ollamaPay.tokensRemaining / data.ollamaPay.totalTokens) * 100).toFixed(1) : 0}%
-                    </span>
-                  </div>
-                  <div className="progress-track">
-                    <div className="progress-fill amber" style={{ 
-                      transform: `scaleX(${data.ollamaPay.totalTokens ? (data.ollamaPay.tokensRemaining / data.ollamaPay.totalTokens) : 0})` 
-                    }} />
+                <div className="progress-section">
+                  <div className="progress-container">
+                    <div className="progress-header">
+                      <span>Quota Remaining</span>
+                      <span>
+                        {data.ollamaPay.totalTokens ? ((data.ollamaPay.tokensRemaining / data.ollamaPay.totalTokens) * 100).toFixed(1) : 0}%
+                      </span>
+                    </div>
+                    <div className="progress-track">
+                      <div className="progress-fill amber" style={{ 
+                        transform: `scaleX(${data.ollamaPay.totalTokens ? (data.ollamaPay.tokensRemaining / data.ollamaPay.totalTokens) : 0})` 
+                      }} />
+                    </div>
                   </div>
                 </div>
 
@@ -1497,6 +1536,10 @@ function App() {
                     <div className="sub-stat-label">Month Tokens</div>
                     <div className="sub-stat-value">{formatCompact(data.ollamaPay.monthTokens)}</div>
                   </div>
+                </div>
+
+                <div className="period-line">
+                  Reset: Monthly Quota
                 </div>
               </div>
             </div>
@@ -1698,20 +1741,62 @@ function App() {
                       if (!isGenerating && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); setActiveSessionId(s.id); setChatPane('chat'); }
                     }}
                   >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', overflow: 'hidden' }}>
-                      <MessageSquare size={14} />
-                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.title}</span>
-                    </div>
-                    {sessions.length > 1 && s.id === activeSessionId && (
-                      <button
-                        type="button"
-                        className="session-delete-btn"
-                        onClick={(e) => { e.stopPropagation(); requestDeleteCurrentSession(); }}
-                        title="ลบบทสนทนานี้"
-                        aria-label="ลบบทสนทนานี้"
+                    {editingSessionId === s.id ? (
+                      <div
+                        className="session-edit-input-group"
+                        onClick={e => e.stopPropagation()}
+                        style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', width: '100%' }}
                       >
-                        <Trash2 size={13} />
-                      </button>
+                        <MessageSquare size={14} style={{ flexShrink: 0 }} />
+                        <input
+                          type="text"
+                          className="session-rename-input"
+                          value={editingSessionTitle}
+                          onChange={e => setEditingSessionTitle(e.target.value)}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter') handleSaveRenameSession(s.id);
+                            if (e.key === 'Escape') setEditingSessionId(null);
+                          }}
+                          autoFocus
+                        />
+                        <button
+                          type="button"
+                          className="session-edit-btn confirm"
+                          onClick={() => handleSaveRenameSession(s.id)}
+                          title="บันทึกชื่อ"
+                        >
+                          <Check size={12} />
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', overflow: 'hidden', minWidth: 0, flex: 1 }}>
+                          <MessageSquare size={14} style={{ flexShrink: 0 }} />
+                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.title}</span>
+                        </div>
+                        <div className="session-item-actions" style={{ display: 'flex', alignItems: 'center', gap: '0.15rem' }}>
+                          <button
+                            type="button"
+                            className="session-edit-btn"
+                            onClick={(e) => handleStartRenameSession(s, e)}
+                            title="เปลี่ยนชื่อบทสนทนา"
+                            aria-label="เปลี่ยนชื่อบทสนทนา"
+                          >
+                            <Pencil size={12} />
+                          </button>
+                          {sessions.length > 1 && s.id === activeSessionId && (
+                            <button
+                              type="button"
+                              className="session-delete-btn"
+                              onClick={(e) => { e.stopPropagation(); requestDeleteCurrentSession(); }}
+                              title="ลบบทสนทนานี้"
+                              aria-label="ลบบทสนทนานี้"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          )}
+                        </div>
+                      </>
                     )}
                   </div>
                 ))}
@@ -1728,9 +1813,46 @@ function App() {
               {/* Header Toolbar */}
               <div className="chat-header-bar">
                 <div className="chat-header-title-row">
-                  <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '1.1rem' }}>
-                    <MessageSquare size={20} className="icon-blue" /> {currentSession.title}
-                  </h3>
+                  {editingSessionId === currentSession?.id ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                      <MessageSquare size={20} className="icon-blue" />
+                      <input
+                        type="text"
+                        className="session-rename-input header"
+                        value={editingSessionTitle}
+                        onChange={e => setEditingSessionTitle(e.target.value)}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') handleSaveRenameSession(currentSession.id);
+                          if (e.key === 'Escape') setEditingSessionId(null);
+                        }}
+                        autoFocus
+                      />
+                      <button
+                        type="button"
+                        className="session-edit-btn confirm"
+                        onClick={() => handleSaveRenameSession(currentSession.id)}
+                        title="บันทึกชื่อ"
+                      >
+                        <Check size={14} />
+                      </button>
+                    </div>
+                  ) : (
+                    <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '1.1rem' }}>
+                      <MessageSquare size={20} className="icon-blue" />
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '360px' }} title={currentSession.title}>
+                        {currentSession.title}
+                      </span>
+                      <button
+                        type="button"
+                        className="session-edit-btn header-edit-btn"
+                        onClick={(e) => handleStartRenameSession(currentSession, e)}
+                        title="แก้ไขชื่อบทสนทนานี้"
+                        aria-label="แก้ไขชื่อบทสนทนานี้"
+                      >
+                        <Pencil size={13} />
+                      </button>
+                    </h3>
+                  )}
                   <div className="row-center-sm">
                     {/* Mobile Settings Toggle Button */}
                     <button

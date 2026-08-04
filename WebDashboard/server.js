@@ -1274,9 +1274,20 @@ if (fs.existsSync(distPath)) {
 }
 
 if (process.env.START_SERVER !== '0') {
-  app.listen(PORT, () => {
-    console.log(`Dashboard server running on port ${PORT}`);
-  });
+  const startServer = (portToTry) => {
+    const server = app.listen(portToTry, () => {
+      console.log(`Dashboard server running on port ${portToTry}`);
+    });
+    server.on('error', (err) => {
+      if (err.code === 'EADDRINUSE' && !process.env.PORT) {
+        console.warn(`Port ${portToTry} is in use, trying port ${portToTry + 1}...`);
+        startServer(portToTry + 1);
+      } else {
+        console.error('Server failed to start:', err);
+      }
+    });
+  };
+  startServer(Number(PORT) || 9000);
 }
 
 export { app };

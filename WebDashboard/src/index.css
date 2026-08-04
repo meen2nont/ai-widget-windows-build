@@ -632,6 +632,9 @@ header {
 
 .overview-card .metric-row {
   margin-bottom: 0.4rem;
+  min-height: 42px;
+  display: flex;
+  align-items: center;
 }
 
 .overview-card .stat-label {
@@ -649,9 +652,19 @@ header {
   color: var(--text-muted);
 }
 
-.overview-card .progress-container {
-  margin-top: 0.35rem;
+.overview-card .progress-section {
+  min-height: 52px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 0.35rem;
+  margin-top: 0.2rem;
   margin-bottom: 0.4rem;
+}
+
+.overview-card .progress-container {
+  margin-top: 0;
+  margin-bottom: 0;
 }
 
 .overview-card .progress-header {
@@ -665,8 +678,9 @@ header {
 
 .overview-card .sub-grid {
   gap: 0.45rem;
-  margin-top: 0.5rem;
+  margin-top: auto;
   padding-top: 0.5rem;
+  border-top: 1px solid var(--panel-border);
 }
 
 .overview-card .sub-stat-box {
@@ -691,6 +705,8 @@ header {
 .overview-card .period-line {
   margin-top: 0.35rem;
   font-size: var(--font-2xs);
+  color: var(--text-secondary);
+  text-align: center;
 }
 
 
@@ -984,14 +1000,15 @@ button.secondary:active {
   outline-offset: -2px;
 }
 
-.session-delete-btn {
+.session-delete-btn,
+.session-edit-btn {
   flex-shrink: 0;
   background: transparent;
   border: none;
   color: var(--text-tertiary);
-  padding: 0.4rem;
-  min-width: 32px;
-  min-height: 32px;
+  padding: 0.35rem;
+  min-width: 28px;
+  min-height: 28px;
   border-radius: var(--radius-sm);
   cursor: pointer;
   display: flex;
@@ -1001,14 +1018,56 @@ button.secondary:active {
   transition: border-color 0.15s ease, background-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease, opacity 0.15s ease;
 }
 
+.session-edit-btn.header-edit-btn {
+  opacity: 0.7;
+}
+
+.session-edit-btn.header-edit-btn:hover {
+  opacity: 1;
+  background: var(--overlay-6);
+  color: var(--accent-blue);
+}
+
 .chat-session-item:hover .session-delete-btn,
-.chat-session-item:focus-within .session-delete-btn {
+.chat-session-item:focus-within .session-delete-btn,
+.chat-session-item:hover .session-edit-btn,
+.chat-session-item:focus-within .session-edit-btn {
   opacity: 1;
 }
 
 .session-delete-btn:hover {
   color: var(--status-red);
   background: var(--status-red-bg);
+}
+
+.session-edit-btn:hover {
+  color: var(--accent-blue);
+  background: var(--accent-blue-bg);
+}
+
+.session-edit-btn.confirm {
+  opacity: 1;
+  color: var(--status-emerald);
+  background: var(--status-emerald-bg);
+}
+
+.session-rename-input {
+  background: var(--panel-bg-solid);
+  border: 1px solid var(--accent-blue);
+  border-radius: var(--radius-xs);
+  color: var(--text-primary);
+  font-size: var(--font-xs);
+  padding: 0.2rem 0.4rem;
+  outline: none;
+  width: 100%;
+}
+
+.session-rename-input.header {
+  font-size: var(--font-md);
+  font-weight: 600;
+  padding: 0.25rem 0.5rem;
+  border-radius: var(--radius-sm);
+  width: 260px;
 }
 
 .chat-session-item:hover {
