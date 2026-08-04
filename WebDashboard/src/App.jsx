@@ -44,6 +44,13 @@ function formatCompact(n) {
   return String(n);
 }
 
+function formatPeriod(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '—';
+  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+}
+
 // Meta badges (search / scrape / tools / files) shared by saved + streaming messages
 function MetaBadges({ m }) {
   return (
@@ -337,6 +344,8 @@ function App() {
     deepseek: {
       balance: '0.00',
       currency: 'USD',
+      granted: '0.00',
+      toppedUp: '0.00',
       spentToday: '0.0000',
       latencyMs: 0,
       available: false
@@ -346,7 +355,11 @@ function App() {
       weeklyPercent: 0,
       cost: '$0.00',
       latencyMs: 0,
-      available: false
+      available: false,
+      totalRequests: 0,
+      activeModels: 0,
+      periodStart: '',
+      periodEnd: ''
     },
     ollamaPay: {
       tokensRemaining: 0,
@@ -412,12 +425,12 @@ function App() {
     const saved = localStorage.getItem('prompt_templates');
     if (saved) return JSON.parse(saved);
     return [
-      { id: 't1', name: 'สรุปรายงานประชุม', prompt: 'ช่วยสรุปรายงานการประชุมต่อไปนี้ให้กระชับ เน้นประเด็นสำคัญ การตัดสินใจ และ action items:\n\n[วางข้อความรายงานประชุมที่นี่]' },
-      { id: 't2', name: 'Refactor Python Code', prompt: 'ช่วย refactor โค้ด Python ต่อไปนี้ให้เป็น Clean Code ตาม PEP 8 พร้อมอธิบายการเปลี่ยนแปลง:\n\n```python\n[วางโค้ดที่นี่]\n```' },
-      { id: 't3', name: 'แปลเอกสารสัญญา', prompt: 'ช่วยแปลเอกสารต่อไปนี้จากภาษาอังกฤษเป็นภาษาไทย โดยรักษาความหมายทางกฎหมายให้ครบถ้วน:\n\n[วางข้อความที่ต้องการแปล]' },
-      { id: 't4', name: 'Code Review', prompt: 'ช่วย review โค้ดต่อไปนี้ โดยตรวจหา bugs, security issues, performance issues และแนะนำการปรับปรุง:\n\n```\n[วางโค้ดที่นี่]\n```' },
-      { id: 't5', name: 'วิเคราะห์ข้อมูล CSV', prompt: 'ช่วยวิเคราะห์ข้อมูลต่อไปนี้ และสรุปผลในรูปแบบตาราง Markdown พร้อม insights สำคัญ:\n\n[วางข้อมูล CSV หรือตารางที่นี่]' },
-      { id: 't6', name: 'ร่างอีเมลทางการ', prompt: 'ช่วยร่างอีเมลทางการภาษาไทยสำหรับ:\nเรื่อง: [ระบุเรื่อง]\nถึง: [ระบุผู้รับ]\nสาระสำคัญ: [ระบุเนื้อหาที่ต้องการสื่อ]' }
+      { id: 't1', name: 'Summarize Meeting', prompt: 'Summarize the following meeting report concisely, highlighting key points, decisions, and action items:\n\n[paste meeting report here]' },
+      { id: 't2', name: 'Refactor Python Code', prompt: 'Refactor the following Python code to Clean Code following PEP 8, with an explanation of changes:\n\n```python\n[paste code here]\n```' },
+      { id: 't3', name: 'Translate Contract', prompt: 'Translate the following document while preserving the legal meaning completely:\n\n[paste text to translate]' },
+      { id: 't4', name: 'Code Review', prompt: 'Review the following code, checking for bugs, security issues, performance issues, and suggesting improvements:\n\n```\n[paste code here]\n```' },
+      { id: 't5', name: 'Analyze CSV', prompt: 'Analyze the following data and summarize it in a Markdown table with key insights:\n\n[paste CSV or table here]' },
+      { id: 't6', name: 'Draft Formal Email', prompt: 'Draft a formal email for:\nSubject: [state subject]\nTo: [state recipient]\nKey points: [state content to convey]' }
     ];
   });
   const [newTemplateName, setNewTemplateName] = useState('');
@@ -491,26 +504,30 @@ function App() {
           const latency = Date.now() - start;
           if (res.ok) {
             const json = await res.json();
-            const bal = json.balance_infos?.[0]?.total_balance || '0.00';
-            const curr = json.balance_infos?.[0]?.currency || 'USD';
-            
-            // Calculate daily spend estimation (Thailand Timezone)
+            const info = json.balance_infos?.[0] || {};
+            const bal = info.total_balance || '0.00';
+            const granted = info.granted_balance || '0.00';
+            const toppedUp = info.topped_up_balance || '0.00';
+            const curr = info.currency || 'USD';
+
+            // Calculate daily spend estimation (Thailand Timezone), based on topped-up balance
+            // so free granted credit doesn't skew the spend delta.
             const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' });
             const savedDate = localStorage.getItem('ds_spend_date');
-            const startBal = localStorage.getItem('ds_start_bal') || bal;
+            const startBal = localStorage.getItem('ds_start_bal') || toppedUp;
             let spent = '0.0000';
 
             if (savedDate === todayStr) {
-              const diff = Math.max(0, parseFloat(startBal) - parseFloat(bal));
+              const diff = Math.max(0, parseFloat(startBal) - parseFloat(toppedUp));
               spent = diff.toFixed(4);
             } else {
               localStorage.setItem('ds_spend_date', todayStr);
-              localStorage.setItem('ds_start_bal', bal);
+              localStorage.setItem('ds_start_bal', toppedUp);
             }
 
             setData(d => ({
               ...d,
-              deepseek: { balance: bal, currency: curr, spentToday: spent, latencyMs: latency, available: true }
+              deepseek: { balance: bal, currency: curr, granted, toppedUp, spentToday: spent, latencyMs: latency, available: true }
             }));
           } else {
             setData(d => ({ ...d, deepseek: { ...d.deepseek, available: false, latencyMs: latency }}));
@@ -531,9 +548,18 @@ function App() {
             const session = (json.limits?.session?.usage || 0) * 100;
             const weekly = (json.limits?.weekly?.usage || 0) * 100;
             const cost = json.activity?.cost || '$0.00';
+            const weeklyModels = json.limits?.weekly?.models || [];
+            const totalRequests = weeklyModels.reduce((s, m) => s + (m.request_count || 0), 0);
+            const activeModels = weeklyModels.length;
+            const period = json.activity?.period || {};
+            const periodStart = period.starting_at || '';
+            const periodEnd = period.ending_at || '';
             setData(d => ({
               ...d,
-              ollama: { sessionPercent: session, weeklyPercent: weekly, cost, latencyMs: latency, available: true }
+              ollama: {
+                sessionPercent: session, weeklyPercent: weekly, cost, latencyMs: latency, available: true,
+                totalRequests, activeModels, periodStart, periodEnd
+              }
             }));
           } else {
             setData(d => ({ ...d, ollama: { ...d.ollama, available: false, latencyMs: latency }}));
@@ -1194,12 +1220,34 @@ function App() {
 
                 <div className="sub-grid">
                   <div className="sub-stat-box">
-                    <div className="sub-stat-label">Spent Today (Est.)</div>
-                    <div className="sub-stat-value">${data.deepseek.spentToday}</div>
+                    <div className="sub-stat-label">Granted</div>
+                    <div className="sub-stat-value">${data.deepseek.granted}</div>
                   </div>
                   <div className="sub-stat-box">
-                    <div className="sub-stat-label">Model</div>
-                    <div className="sub-stat-value" style={{fontSize: '0.9rem'}}>deepseek-chat</div>
+                    <div className="sub-stat-label">Topped-Up</div>
+                    <div className="sub-stat-value">${data.deepseek.toppedUp}</div>
+                  </div>
+                </div>
+
+                <div className="progress-container" style={{ marginTop: '1rem' }}>
+                  <div className="progress-header">
+                    <span>Credit Composition</span>
+                    <span>
+                      {(() => {
+                        const total = parseFloat(data.deepseek.granted) + parseFloat(data.deepseek.toppedUp);
+                        if (!total) return '—';
+                        return `${((parseFloat(data.deepseek.toppedUp) / total) * 100).toFixed(0)}% topped-up`;
+                      })()}
+                    </span>
+                  </div>
+                  <div className="progress-track">
+                    <div
+                      className="progress-fill indigo"
+                      style={{ transform: `scaleX(${(() => {
+                        const total = parseFloat(data.deepseek.granted) + parseFloat(data.deepseek.toppedUp);
+                        return total ? Math.min((parseFloat(data.deepseek.toppedUp) / total), 1) : 0;
+                      })()})` }}
+                    />
                   </div>
                 </div>
               </div>
@@ -1243,6 +1291,20 @@ function App() {
                   <div className="progress-track">
                     <div className="progress-fill emerald" style={{ transform: `scaleX(${Math.min(data.ollama.weeklyPercent, 100) / 100})` }} />
                   </div>
+                </div>
+
+                <div className="sub-grid">
+                  <div className="sub-stat-box">
+                    <div className="sub-stat-label">Total Requests</div>
+                    <div className="sub-stat-value">{formatCompact(data.ollama.totalRequests)}</div>
+                  </div>
+                  <div className="sub-stat-box">
+                    <div className="sub-stat-label">Active Models</div>
+                    <div className="sub-stat-value">{data.ollama.activeModels}</div>
+                  </div>
+                </div>
+                <div className="period-line">
+                  Period: {formatPeriod(data.ollama.periodStart)} → {formatPeriod(data.ollama.periodEnd)}
                 </div>
               </div>
 
@@ -1332,7 +1394,7 @@ function App() {
             <div className="card-header card-header-compact">
               <div className="card-title-group">
                 <BookOpen size={16} className="icon-blue" />
-                <h3 className="card-title">ทางลัดเริ่มแชทด่วน (Quick Starters)</h3>
+                <h3 className="card-title">Quick Starters</h3>
               </div>
             </div>
             <div className="quick-starters-grid">
@@ -1369,7 +1431,7 @@ function App() {
             <div className="card-header card-header-compact">
               <div className="card-title-group">
                 <Clock size={16} className="icon-purple" />
-                <h3 className="card-title">บทสนทนาล่าสุด (Recent Activity)</h3>
+                <h3 className="card-title">Recent Activity</h3>
               </div>
               <button
                 type="button"
@@ -1377,7 +1439,7 @@ function App() {
                 style={{ padding: '0.2rem 0.5rem', fontSize: '0.72rem' }}
                 onClick={() => { setActiveTab('chat'); setChatPane('history'); }}
               >
-                ดูทั้งหมด
+                View all
               </button>
             </div>
             <div className="recent-activity-list">
@@ -1391,7 +1453,7 @@ function App() {
                     <MessageSquare size={13} style={{ color: 'var(--accent-blue)', flexShrink: 0 }} />
                     <span className="activity-title">{s.title}</span>
                   </div>
-                  <span className="activity-badge">{s.messages.length} ข้อความ</span>
+                  <span className="activity-badge">{s.messages.length} messages</span>
                 </div>
               ))}
             </div>
@@ -1402,7 +1464,7 @@ function App() {
             <div className="card-header card-header-compact">
               <div className="card-title-group">
                 <Activity size={16} className="icon-green" />
-                <h3 className="card-title">ความเร็วการตอบสนอง (Latency)</h3>
+                <h3 className="card-title">Latency</h3>
               </div>
             </div>
             <div className="latency-chart-list">

@@ -585,6 +585,14 @@ header {
   color: var(--text-primary);
 }
 
+.period-line {
+  margin-top: 0.75rem;
+  font-size: var(--font-xs);
+  color: var(--text-secondary);
+  font-weight: 500;
+  text-align: center;
+}
+
 /* Progress bar styled */
 .progress-container {
   margin-top: 0.75rem;

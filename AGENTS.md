@@ -37,3 +37,16 @@ npm test           # node --test (built-in runner, no framework)
 - `server.js` is the whole backend: Express proxy + SSE streaming chat (`/api/deepseek/chat`, `/api/ollama/chat`), web search/URL scrape tools, memory API, auth. `memory.js` = semantic memory (Ollama embeddings via `https://ollama.com/api/embed`, SQLite vector storage). `src/App.jsx` is a single large frontend file.
 - Chat is SSE (`text/event-stream`): events `delta` / `meta` / `done` / `error` / `aborted`. The server keeps a 20s keep-alive ping on stream (cleared on `done`).
 - Ollama cloud data is fetched directly (no local Ollama server needed).
+
+## CSS conventions (WebDashboard)
+
+**ออกแบบโดยอิงข้อมูล/ค่าจากส่วนกลางเสมอ** — ทุกค่าสี, ขนาดฟอนต์, รัศมี, shadow, overlay, surface ต้องดึงจาก design tokens ใน `:root` ของ `src/index.css` ห้าม hardcode ค่า raw (hex/rgba/px) ในไฟล์ CSS หรือ inline styles ตรงๆ ยกเว้นค่า dynamic/conditional ที่ต้องตั้งจาก logic ใน JSX
+
+- **Tokens ทั้งหมดอยู่ใน `:root` block เดียว** ของ `src/index.css` — semantic ชื่อ (เช่น `--text-muted`→`var(--text-secondary)`, `--status-red`, `--panel-border`, `--radius-md`, `--font-sm`). ถ้าจะเพิ่มค่าสีใหม่ ต้องเป็น token ก่อน แล้วค่อยนำไปใช้.
+- **Type scale**: ใช้ `--font-*` tokens (0.6rem→1.5rem + relaxed steps) — ห้ามใช้ `font-size` ตัวเลขลอย.
+- **Radius**: ใช้ `--radius-*` (xs/sm/md/lg/pill) — ห้ามใช้ `border-radius` ตัวเลขลอย.
+- **No dead code**: อย่าสร้าง/เก็บ CSS block ที่ไม่มีคนใช้. ถ้า class ถูก refactor หาย ให้ลบ style ของมันด้วย.
+- **No duplicate blocks**: อย่าเขียน rule ซ้ำสองที่ (เช่น `.glass-card` ครั้งเดียว). ถ้าเจอซ้ำ ให้ merge เป็น block เดียว.
+- **Scoped transitions**: ใช้ `transition` เฉพาะ property ที่ต้องการ (color/background/transform…) ห้าม `transition: all` + ต้องมี `@media (prefers-reduced-motion: reduce)`.
+- **Touch targets**: ปุ่ม icon-only ต้อง hit area ≥32px (desktop) / ≥44px (mobile) — ใช้ `min-width/min-height` อย่าพึ่ง padding อย่างเดียว.
+- **Utility classes ก่อน inline styles**: สำหรับ layout/icon-color ที่ซ้ำ ให้ extract เป็น class ใน index.css (เช่น `.row-center`, `.icon-blue`, `.card-header-compact`) ดีกว่า `style={{…}}` — เหลือ inline styles เฉพาะค่าที่ dynamic (progress `scaleX`, conditional color).
