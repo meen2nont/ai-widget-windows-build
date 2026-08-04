@@ -123,7 +123,7 @@ test('deepseek chat injects MEMORY section into upstream request when useMemory'
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer test-deepseek-key' },
       body: JSON.stringify({
-        model: 'deepseek-chat',
+        model: 'deepseek-v4-flash',
         useMemory: true,
         sessionId: 'x',
         messages: [{ role: 'user', content: 'คุณชื่ออะไร' }]

@@ -15,7 +15,13 @@ import TemplatesModal from './components/TemplatesModal';
 import ConfirmDeleteModal from './components/ConfirmDeleteModal';
 import SettingsModal from './components/SettingsModal';
 import pkg from '../package.json';
+import { isPeakHour, bangkokDateStr, formatBangkokFull, formatBangkokTime, formatBangkokDayMonth } from '../time.js';
 import './index.css';
+
+// Stable message id helper
+let msgCounter = 0;
+const newMsgId = () => `m-${Date.now()}-${msgCounter++}`;
+const ensureMsgIds = (msgs) => (msgs || []).map(m => (m && m.id) ? m : { ...m, id: newMsgId() });
 
 
 const PERSONAS = {
@@ -48,7 +54,7 @@ function formatPeriod(iso) {
   if (!iso) return '—';
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '—';
-  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+  return formatBangkokDayMonth(d);
 }
 
 // Meta badges (search / scrape / tools / files) shared by saved + streaming messages
@@ -379,13 +385,16 @@ function App() {
     {
       id: 'default-session',
       title: 'แชท 1',
-      messages: [{ role: 'assistant', content: 'สวัสดีครับ! ผมคือ DeepSeek AI พร้อมใช้งาน Web Search, เครื่องมือ, การแนบไฟล์, Voice Input, Vision และ Personas มีอะไรให้ช่วยได้บ้างครับ?' }]
+      messages: [{ role: 'assistant', content: 'สวัสดีครับ! ผมคือ DeepSeek AI พร้อมใช้งาน Web Search, เครื่องมือ, การแนบไฟล์, Voice Input, Vision และ Personas มีอะไรให้ช่วยได้บ้างครับ?', id: newMsgId() }]
     }
   ]);
+  const sessionsRef = useRef(null);
   const [activeSessionId, setActiveSessionId] = useState('default-session');
   const [chatPane, setChatPane] = useState('chat');
   const [promptInput, setPromptInput] = useState('');
-  const [selectedModel, setSelectedModel] = useState('deepseek-chat');
+  const [selectedModel, setSelectedModel] = useState('auto');
+  const [lastResolvedModel, setLastResolvedModel] = useState(null);
+  const [now, setNow] = useState(() => new Date());
   const [selectedPersona, setSelectedPersona] = useState('general');
   const [customPersonaPrompt, setCustomPersonaPrompt] = useState('');
   const [enableWebSearch, setEnableWebSearch] = useState(true);
@@ -444,7 +453,7 @@ function App() {
         if (res.ok) {
           const saved = await res.json();
           if (Array.isArray(saved) && saved.length > 0) {
-            setSessions(saved);
+            setSessions(saved.map(s => ({ ...s, messages: ensureMsgIds(s.messages) })));
             setActiveSessionId(saved[0].id);
             return;
           }
@@ -456,7 +465,7 @@ function App() {
       if (local) {
         try {
           const parsed = JSON.parse(local);
-          if (parsed.length > 0) setSessions(parsed);
+          if (parsed.length > 0) setSessions(parsed.map(s => ({ ...s, messages: ensureMsgIds(s.messages) })));
         } catch {}
       }
     }
@@ -478,6 +487,16 @@ function App() {
 
   const currentSession = sessions.find(s => s.id === activeSessionId) || sessions[0];
   const messages = currentSession ? currentSession.messages : [];
+
+  useEffect(() => { sessionsRef.current = sessions; }, [sessions]);
+
+  // Refresh clock every 30s so the peak badge stays current.
+  useEffect(() => {
+    const t = setInterval(() => setNow(new Date()), 30000);
+    return () => clearInterval(t);
+  }, []);
+
+  const isPeak = isPeakHour(now);
 
   const showToast = (msg) => {
     setToastMsg(msg);
@@ -512,7 +531,7 @@ function App() {
 
             // Calculate daily spend estimation (Thailand Timezone), based on topped-up balance
             // so free granted credit doesn't skew the spend delta.
-            const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' });
+            const todayStr = bangkokDateStr();
             const savedDate = localStorage.getItem('ds_spend_date');
             const startBal = localStorage.getItem('ds_start_bal') || toppedUp;
             let spent = '0.0000';
@@ -611,7 +630,7 @@ function App() {
     const newSess = {
       id: newId,
       title: `แชท ${sessions.length + 1}`,
-      messages: [{ role: 'assistant', content: 'สวัสดีครับ! มีอะไรให้ช่วยในบทสนทนาใหม่นี้ไหม?' }]
+      messages: [{ role: 'assistant', content: 'สวัสดีครับ! มีอะไรให้ช่วยในบทสนทนาใหม่นี้ไหม?', id: newMsgId() }]
     };
     const updated = [newSess, ...sessions];
     saveSessions(updated);
@@ -628,6 +647,7 @@ function App() {
   };
 
   const confirmDeleteSessionNow = () => {
+    fetch('/api/chats/' + encodeURIComponent(activeSessionId), { method: 'DELETE' }).catch(() => {});
     const updated = sessions.filter(s => s.id !== activeSessionId);
     saveSessions(updated);
     setActiveSessionId(updated[0].id);
@@ -918,14 +938,18 @@ function App() {
       const next = prev.map(s =>
         s.id === activeSessionId ? { ...s, messages: [...s.messages, assistantMsg] } : s
       );
-      localStorage.setItem('ai_chat_sessions', JSON.stringify(next));
-      fetch('/api/chats', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(next)
-      }).catch(() => {});
       return next;
     });
+    const base = sessionsRef.current || sessions;
+    const updated = base.map(s =>
+      s.id === activeSessionId ? { ...s, messages: [...s.messages, assistantMsg] } : s
+    );
+    localStorage.setItem('ai_chat_sessions', JSON.stringify(updated));
+    fetch('/api/chats', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updated)
+    }).catch(() => {});
   };
 
   const stopGenerating = () => {
@@ -940,12 +964,58 @@ function App() {
     setStreamError('');
   };
 
+  // Route to a concrete model based on the task, given available keys.
+  const resolveModel = (prompt, attachedFiles) => {
+    const hasImg = (attachedFiles || []).some(f => f.type?.startsWith('image/'));
+    const text = (prompt || '').toLowerCase();
+    const hasDS = !!keys.deepseek;
+    const hasOllama = !!keys.ollama;
+
+    const codeKeywords = ['โค้ด', 'code', 'refactor', 'debug', 'function', 'javascript', 'python', 'typescript', 'sql', 'api', 'react', 'component', 'error', 'bug'];
+    const reasonKeywords = ['วิเคราะห์', 'วิเคราห์', 'เหตุผล', 'ทำไม', 'เพราะ', 'เปรียบเทียบ', 'สรุป', 'ข้อดีข้อเสีย', 'pros and cons', 'why', 'compare', 'analyze', 'evaluate'];
+
+    const peak = isPeakHour();
+
+    // Cheapest capable DeepSeek fallback for a non-reasoning task.
+    const cheapest = () => {
+      if (hasOllama) return 'ollama:deepseek-v4-flash';
+      if (hasDS) return 'deepseek-v4-flash';
+      return 'deepseek-v4-flash';
+    };
+
+    const pick = (prefer) => {
+      if (prefer === 'reason') {
+        // Use pro only off-peak; during peak downgrade to flash to save money.
+        if (hasDS) return peak ? 'deepseek-v4-flash' : 'deepseek-v4-pro';
+        return cheapest();
+      }
+      return cheapest();
+    };
+
+    if (hasImg) {
+      // Ollama Cloud has no vision model — route images to DeepSeek (has multimodal).
+      return hasDS ? 'deepseek-v4-flash' : 'deepseek-v4-flash';
+    }
+    if (codeKeywords.some(k => text.includes(k))) return pick('code');
+    if (reasonKeywords.some(k => text.includes(k))) return pick('reason');
+    return pick('chat');
+  };
+
   const sendChatMessage = async (e) => {
     e.preventDefault();
     if ((!promptInput.trim() && attachedFiles.length === 0) || isGenerating) return;
 
-    const isOllamaModel = selectedModel.startsWith('ollama:');
-    if (!isOllamaModel && !keys.deepseek) {
+    const actualModel = selectedModel === 'auto'
+      ? resolveModel(promptInput, attachedFiles)
+      : selectedModel;
+    const isOllamaModel = actualModel.startsWith('ollama:');
+    if (isOllamaModel) {
+      if (!keys.ollama) {
+        showToast('กรุณากรอก Ollama Key ใน Settings ก่อนใช้งาน');
+        setShowSettings(true);
+        return;
+      }
+    } else if (!keys.deepseek) {
       showToast('กรุณากรอก DeepSeek API Key ใน Settings ก่อนใช้งาน');
       setShowSettings(true);
       return;
@@ -957,6 +1027,7 @@ function App() {
     const userMsgObj = {
       role: 'user',
       content: userText,
+      id: newMsgId(),
       attachedFiles: currentAttachedFiles.length > 0 ? currentAttachedFiles : null
     };
 
@@ -965,9 +1036,13 @@ function App() {
       const next = prevSessions.map(s =>
         s.id === activeSessionId ? { ...s, messages: [...s.messages, userMsgObj], title: s.messages.length <= 1 ? (userText ? userText.substring(0, 20) : 'แนบไฟล์') : s.title } : s
       );
-      localStorage.setItem('ai_chat_sessions', JSON.stringify(next));
       return next;
     });
+    const baseSessions = sessionsRef.current || sessions;
+    const updatedSessions = baseSessions.map(s =>
+      s.id === activeSessionId ? { ...s, messages: [...s.messages, userMsgObj], title: s.messages.length <= 1 ? (userText ? userText.substring(0, 20) : 'แนบไฟล์') : s.title } : s
+    );
+    localStorage.setItem('ai_chat_sessions', JSON.stringify(updatedSessions));
 
     setPromptInput('');
     setAttachedFiles([]);
@@ -982,17 +1057,20 @@ function App() {
       ? customPersonaPrompt
       : PERSONAS[selectedPersona]?.prompt || '';
 
-    const endpoint = isOllamaModel ? '/api/ollama/chat' : '/api/deepseek/chat';
     const controller = new AbortController();
     abortRef.current = controller;
 
-    try {
+    // Stream against a chosen model. Returns true if the stream completed
+    // (or was aborted), false if the provider was unavailable (503) and a
+    // fallback should be attempted.
+    const streamWith = async (model, endpoint) => {
+      const isOllama = model.startsWith('ollama:');
       const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         signal: controller.signal,
         body: JSON.stringify({
-          model: isOllamaModel ? selectedModel.replace('ollama:', '') : selectedModel,
+          model: isOllama ? model.replace('ollama:', '') : model,
           webSearch: enableWebSearch,
           useTools: useTools,
           useMemory: useMemory,
@@ -1005,9 +1083,11 @@ function App() {
 
       if (!res.ok) {
         const errJson = await res.json().catch(() => ({}));
+        if (res.status === 503) return false;
         throw new Error(errJson.error || 'เกิดข้อผิดพลาดในการติดต่อ AI API');
       }
 
+      let providerFailed = false;
       await parseSSEEvents(res, {
         meta: (m) => {
           setStreamingMeta(prev => ({
@@ -1024,6 +1104,8 @@ function App() {
           const assistantMsg = {
             role: 'assistant',
             content: m.content || '',
+            id: newMsgId(),
+            model,
             searchResults: m.searchResults || null,
             scrapedContent: m.scrapedContent || null,
             executedTools: m.executedTools || null,
@@ -1033,9 +1115,66 @@ function App() {
           appendAssistantMessage(assistantMsg);
           fetchData();
         },
-        error: (m) => setStreamError(m.error || 'เกิดข้อผิดพลาดในการติดต่อ AI API'),
+        error: (m) => {
+          console.error(`[chat][${model}] SSE error:`, m.error);
+          if (m.error && (m.error.includes('503') || m.error.includes('404') || m.error.includes('400') || m.error.includes('not found'))) providerFailed = true;
+          setStreamError(m.error || 'เกิดข้อผิดพลาดในการติดต่อ AI API');
+        },
         aborted: () => {}
       });
+      return !providerFailed;
+    };
+
+    try {
+      const isAuto = selectedModel === 'auto';
+      if (isAuto) setLastResolvedModel(actualModel);
+
+      // Candidate chain: the resolved model first, then alternates until one succeeds.
+      // Only used in auto mode when the primary provider fails.
+      let candidates = null;
+      if (isAuto) {
+        const dsModels = ['deepseek-v4-flash', 'deepseek-v4-pro'];
+        const ollamaModels = ['ollama:deepseek-v4-flash', 'ollama:gpt-oss:20b', 'ollama:gemma4:31b', 'ollama:qwen3.5:397b'];
+        const ordered = [];
+        if (actualModel.startsWith('ollama:')) {
+          ordered.push(actualModel);
+          if (keys.deepseek) ordered.push(...dsModels);
+          ordered.push(...ollamaModels.filter(m => m !== actualModel));
+        } else {
+          ordered.push(actualModel);
+          ordered.push(...dsModels.filter(m => m !== actualModel));
+          if (keys.ollama) ordered.push(...ollamaModels);
+        }
+        candidates = [...new Set(ordered)];
+      }
+
+      let attempt = 0;
+      let ok = false;
+      let lastEndpoint = isOllamaModel ? '/api/ollama/chat' : '/api/deepseek/chat';
+
+      if (candidates) {
+        // Auto mode: walk the chain, resetting stream state between attempts.
+        for (; attempt < candidates.length; attempt++) {
+          const m = candidates[attempt];
+          const ep = m.startsWith('ollama:') ? '/api/ollama/chat' : '/api/deepseek/chat';
+          const usable = m.startsWith('ollama:') ? keys.ollama : keys.deepseek;
+          if (!usable) continue;
+          if (attempt > 0) {
+            setStreamingContent('');
+            setStreamingMeta(null);
+            setStreamError('');
+            setLastResolvedModel(m);
+          }
+          ok = await streamWith(m, ep);
+          if (ok) break;
+        }
+      } else {
+        ok = await streamWith(actualModel, lastEndpoint);
+      }
+
+      if (candidates && !ok) {
+        setStreamError('ทุกโมเดลใช้งานไม่ได้ชั่วคราว — ลองอีกครั้งในอีกสักครู่');
+      }
     } catch (err) {
       if (err.name === 'AbortError') {
         showToast('ยกเลิกการสร้างคำตอบแล้ว');
@@ -1053,7 +1192,7 @@ function App() {
   };
 
   const copyStatsToClipboard = () => {
-    const thaiTimeStr = new Date().toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' });
+    const thaiTimeStr = formatBangkokFull();
     const summary = `
 📊 AI Service Monitoring Summary (${thaiTimeStr} น.)
 -----------------------------------------
@@ -1108,7 +1247,7 @@ function App() {
         <div className="header-actions">
           <div className="latency-tag" style={{ padding: '0.4rem 0.75rem', borderRadius: '10px' }}>
             <Clock size={14} />
-            <span>Last updated {lastRefreshed.toLocaleTimeString('th-TH', { timeZone: 'Asia/Bangkok', hour12: false })}</span>
+            <span>Last updated {formatBangkokTime(lastRefreshed)}</span>
           </div>
 
 
@@ -1220,12 +1359,16 @@ function App() {
 
                 <div className="sub-grid">
                   <div className="sub-stat-box">
-                    <div className="sub-stat-label">Granted</div>
-                    <div className="sub-stat-value">${data.deepseek.granted}</div>
+                    <div className="sub-stat-label">Spent Today</div>
+                    <div className="sub-stat-value">${data.deepseek.spentToday}</div>
                   </div>
                   <div className="sub-stat-box">
-                    <div className="sub-stat-label">Topped-Up</div>
-                    <div className="sub-stat-value">${data.deepseek.toppedUp}</div>
+                    <div className="sub-stat-label">Pricing</div>
+                    <div className="sub-stat-value">
+                      <span className={`peak-badge ${isPeak ? 'peak' : 'offpeak'}`}>
+                        {isPeak ? '⚡ Peak (x2)' : '🟢 ราคาปกติ'}
+                      </span>
+                    </div>
                   </div>
                 </div>
 
@@ -1695,14 +1838,21 @@ function App() {
                       value={selectedModel}
                       onChange={setSelectedModel}
                       groups={[
-                        { label: 'DeepSeek API', options: [
-                          { value: 'deepseek-chat', label: 'deepseek-chat' },
-                          { value: 'deepseek-coder', label: 'deepseek-coder' },
+                        { label: 'อัตโนมัติ', options: [
+                          { value: 'auto', label: '🤖 Auto — เลือกเองตามงาน' },
                         ] },
-                        { label: 'Ollama Cloud / Local', options: [
-                          { value: 'ollama:llama3', label: 'ollama: llama3' },
-                          { value: 'ollama:qwen2.5', label: 'ollama: qwen2.5' },
-                          { value: 'ollama:mistral', label: 'ollama: mistral' },
+                        { label: 'DeepSeek API', options: [
+                          { value: 'deepseek-v4-flash', label: 'deepseek-v4-flash' },
+                          { value: 'deepseek-v4-pro', label: 'deepseek-v4-pro' },
+                        ] },
+                        { label: 'Ollama Cloud', options: [
+                          { value: 'ollama:deepseek-v4-flash', label: 'ollama: deepseek-v4-flash' },
+                          { value: 'ollama:gpt-oss:20b', label: 'ollama: gpt-oss:20b' },
+                          { value: 'ollama:gpt-oss:120b', label: 'ollama: gpt-oss:120b' },
+                          { value: 'ollama:gemma4:31b', label: 'ollama: gemma4:31b' },
+                          { value: 'ollama:qwen3.5:397b', label: 'ollama: qwen3.5:397b' },
+                          { value: 'ollama:kimi-k2.6', label: 'ollama: kimi-k2.6' },
+                          { value: 'ollama:mistral-large-3:675b', label: 'ollama: mistral-large-3:675b' },
                         ] },
                       ]}
                     />
@@ -1720,6 +1870,16 @@ function App() {
                       <BookOpen size={14} /> เทมเพลต
                     </button>
                   </div>
+                </div>
+
+                {selectedModel === 'auto' && lastResolvedModel && (
+                  <div className="auto-model-badge">
+                    <span className="auto-model-dot" />
+                    Auto: ใช้โมเดล <strong>{lastResolvedModel.replace('ollama:', 'ollama: ')}</strong>
+                  </div>
+                )}
+                <div className={`peak-badge ${isPeak ? 'peak' : 'offpeak'}`}>
+                  {isPeak ? '⚡ ช่วง Peak — DeepSeek ราคา x2' : '🟢 ช่วงประหยัด — ราคาปกติ'}
                 </div>
               </div>
 
@@ -1739,7 +1899,7 @@ function App() {
               {/* Messages Container */}
               <div className="chat-messages">
                 {messages.map((m, idx) => (
-                  <div key={idx} className={`message-wrapper ${m.role}`}>
+                  <div key={m.id || idx} className={`message-wrapper ${m.role}`}>
                     <div className={`message-bubble ${m.role}`}>
                       <MetaBadges m={m} />
                       {/* Message Content with Markdown & Code Highlighting */}
@@ -1749,6 +1909,13 @@ function App() {
                         <MarkdownMessage content={m.content} />
                       )}
                     </div>
+
+                    {m.role === 'assistant' && m.model && (
+                      <div className="message-model-tag">
+                        <Bot size={11} />
+                        <span>{m.model.replace('ollama:', 'ollama: ')}</span>
+                      </div>
+                    )}
 
                     {/* Small Action Icons Outside Bubble (Bottom Corner) */}
                     <div className="message-actions-outside">

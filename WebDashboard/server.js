@@ -7,6 +7,7 @@ import { dirname, join } from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
 import { initMemoryTables, listMemories, listSummaries, addMemory, deleteMemory, clearMemories, deleteMemoriesByChat, embedTexts, retrieveTopMemories, extractAndStore, buildMemorySection } from './memory.js';
+import { isPeakHour as bangkokIsPeakHour, formatBangkokFull, bangkokDayOfWeek, formatBangkokDateShort } from './time.js';
 import Database from 'better-sqlite3';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -112,6 +113,19 @@ function getServerConfig() {
         console.error('Error reading/decrypting config:', e.message);
     }
     return { deepseek: '', ollama: '', ollamaPay: '' };
+}
+
+// Per-model pricing in USD per 1M tokens (per DeepSeek docs)
+const MODEL_PRICING = {
+    'deepseek-v4-flash': { input: 0.14, output: 0.28 },
+    'deepseek-v4-pro': { input: 0.435, output: 0.87 },
+};
+const getPricing = (model) => MODEL_PRICING[model] || { input: 0.14, output: 0.28 };
+
+// Peak pricing window (Thailand time): 08:00-11:00 and 13:00-17:00.
+// Returns true when DeepSeek charges 2x (peak) pricing.
+function isPeakHour() {
+    return bangkokIsPeakHour();
 }
 
 // Helper to encrypt and save server-side config
@@ -388,37 +402,40 @@ app.get('/api/chats', (req, res) => {
 app.post('/api/chats', (req, res) => {
     try {
         const sessions = Array.isArray(req.body) ? req.body : [];
-        
-        const updateSessions = db.transaction((sessionsData) => {
-            const currentIds = sessionsData.map(s => s.id).filter(id => typeof id === 'string');
-            
-            // Delete sessions not in the current payload (to handle deletions from UI)
-            if (currentIds.length > 0) {
-                const placeholders = currentIds.map(() => '?').join(',');
-                db.prepare(`DELETE FROM sessions WHERE id NOT IN (${placeholders})`).run(...currentIds);
-            } else {
-                db.prepare('DELETE FROM sessions').run();
-            }
 
-            // Insert or Replace current sessions
-            const stmt = db.prepare('INSERT OR REPLACE INTO sessions (id, name, updated_at, messages) VALUES (?, ?, ?, ?)');
+        // Upsert-only: do NOT delete sessions missing from this payload.
+        // Deletion is handled explicitly via DELETE /api/chats/:id to avoid
+        // race conditions across tabs/devices clobbering each other's sessions.
+        const stmt = db.prepare('INSERT OR REPLACE INTO sessions (id, name, updated_at, messages) VALUES (?, ?, ?, ?)');
+        const upsert = db.transaction((sessionsData) => {
             for (const s of sessionsData) {
                 if (s.id) {
                     stmt.run(
-                        s.id, 
-                        s.title || s.name || 'New Chat', 
-                        Date.now(), 
+                        s.id,
+                        s.title || s.name || 'New Chat',
+                        Date.now(),
                         JSON.stringify(s.messages || [])
                     );
                 }
             }
         });
 
-        updateSessions(sessions);
+        upsert(sessions);
         res.json({ status: 'ok' });
     } catch (e) {
         console.error('Error saving sessions to DB:', e);
         res.status(500).json({ error: 'Failed to save chats' });
+    }
+});
+
+// Delete a single chat session
+app.delete('/api/chats/:id', (req, res) => {
+    try {
+        db.prepare('DELETE FROM sessions WHERE id = ?').run(req.params.id);
+        res.json({ status: 'ok' });
+    } catch (e) {
+        console.error('Error deleting chat session:', e);
+        res.status(500).json({ error: 'Failed to delete chat' });
     }
 });
 
@@ -571,7 +588,7 @@ async function executeToolCall(toolName, args, db, serverConfig) {
             return JSON.stringify(results.map(r => ({
                 content: r.content,
                 type: r.type,
-                when: r.created_at ? new Date(r.created_at).toLocaleDateString('th-TH') : null
+                when: r.created_at ? formatBangkokDateShort(new Date(r.created_at)) : null
             })));
         }
         if (toolName === 'web_search') {
@@ -583,8 +600,7 @@ async function executeToolCall(toolName, args, db, serverConfig) {
             return page ? page.text : "Could not fetch URL content.";
         }
         if (toolName === 'get_current_time') {
-            const now = new Date();
-            return now.toLocaleString('th-TH', { timeZone: 'Asia/Bangkok', dateStyle: 'full', timeStyle: 'medium' });
+            return formatBangkokFull();
         }
         if (toolName === 'calculator') {
             const expr = (args.expression || '').replace(/[^0-9+\-*/().\s]/g, '').trim();
@@ -596,6 +612,41 @@ async function executeToolCall(toolName, args, db, serverConfig) {
         return `Tool execution error: ${e.message}`;
     }
     return "Unknown tool";
+}
+
+// Build the shared system prompt from date, persona, attached text files,
+// scraped web content, web search results, and retrieved memory.
+function buildSystemContext({ thaiDateStr, dayOfWeekTH, personaPrompt, textFiles, scrapedContent, searchResults, memorySection }) {
+    let systemContent = `Today's exact real-time Date & Time is: ${thaiDateStr} (${dayOfWeekTH}).\n`;
+    if (personaPrompt) {
+        systemContent += `\nRole Persona Instructions: ${personaPrompt}\n`;
+    }
+
+    if (textFiles.length > 0) {
+        systemContent += `\n--- ATTACHED USER FILES (${textFiles.length} file(s)) ---\n`;
+        textFiles.forEach((file, idx) => {
+            systemContent += `\n[File ${idx + 1}: ${file.name} (${file.type || 'file'})]\n${file.content}\n`;
+        });
+        systemContent += `-----------------------------------------------\n`;
+    }
+
+    if (scrapedContent) {
+        systemContent += `\n--- SCRAPED WEB PAGE CONTENT (${scrapedContent.url}) ---\nTitle: ${scrapedContent.title}\nContent:\n${scrapedContent.text}\n--------------------------------------------\n`;
+    }
+
+    if (searchResults.length > 0) {
+        const searchFormatted = searchResults
+            .map((r, i) => `[Source ${i + 1}] ${r.title}\n${r.snippet}`)
+            .join('\n\n');
+        systemContent += `\n--- LIVE WEB SEARCH RESULTS ---\n${searchFormatted}\n----------------------------------\n`;
+    }
+
+    if (memorySection) {
+        systemContent += memorySection;
+    }
+
+    systemContent += `\nInstructions: Use the real-time date, role persona, attached files, scraped web content, search results, and memory above to provide a clear, helpful, and accurate response.`;
+    return systemContent;
 }
 
 // ── Memory API ─────────────────────────────────────
@@ -724,16 +775,15 @@ app.post('/api/deepseek/chat', async (req, res) => {
         const serverConfig = getServerConfig();
         const authHeader = serverConfig.deepseek ? `Bearer ${serverConfig.deepseek}` : '';
 
-        const { webSearch, personaPrompt, attachedFiles, useTools, useMemory, sessionId, messages, ...otherParams } = req.body;
+        const { webSearch, personaPrompt, attachedFiles, useTools, useMemory, sessionId, messages, model, ...otherParams } = req.body;
         let finalMessages = Array.isArray(messages) ? [...messages] : [];
         let searchResults = [];
         let scrapedContent = null;
         let executedTools = [];
 
         // Calculate real-time current date & time (Thailand Timezone)
-        const now = new Date();
-        const thaiDateStr = now.toLocaleString('th-TH', { timeZone: 'Asia/Bangkok', dateStyle: 'full', timeStyle: 'medium' });
-        const dayOfWeekTH = now.toLocaleDateString('th-TH', { timeZone: 'Asia/Bangkok', weekday: 'long' });
+        const thaiDateStr = formatBangkokFull();
+        const dayOfWeekTH = bangkokDayOfWeek();
 
         if (finalMessages.length > 0) {
             const lastUserMsg = [...finalMessages].reverse().find(m => m.role === 'user');
@@ -751,44 +801,22 @@ app.post('/api/deepseek/chat', async (req, res) => {
             }
         }
 
-        let systemContent = `Today's exact real-time Date & Time is: ${thaiDateStr} (${dayOfWeekTH}).\n`;
-        if (personaPrompt) {
-            systemContent += `\nRole Persona Instructions: ${personaPrompt}\n`;
-        }
-
         // Split attachedFiles into text files and image files
         const textFiles = (Array.isArray(attachedFiles) ? attachedFiles : []).filter(f => !f.type.startsWith('image/'));
         const imageFiles = (Array.isArray(attachedFiles) ? attachedFiles : []).filter(f => f.type.startsWith('image/'));
 
-        // Process Text-based Attached Files into system prompt
-        if (textFiles.length > 0) {
-            systemContent += `\n--- ATTACHED USER FILES (${textFiles.length} file(s)) ---\n`;
-            textFiles.forEach((file, idx) => {
-                systemContent += `\n[File ${idx + 1}: ${file.name} (${file.type || 'file'})]\n${file.content}\n`;
-            });
-            systemContent += `-----------------------------------------------\n`;
-        }
-
-        if (scrapedContent) {
-            systemContent += `\n--- SCRAPED WEB PAGE CONTENT (${scrapedContent.url}) ---\nTitle: ${scrapedContent.title}\nContent:\n${scrapedContent.text}\n--------------------------------------------\n`;
-        }
-
-        if (searchResults.length > 0) {
-            const searchFormatted = searchResults
-                .map((r, i) => `[Source ${i + 1}] ${r.title}\n${r.snippet}`)
-                .join('\n\n');
-            systemContent += `\n--- LIVE WEB SEARCH RESULTS ---\n${searchFormatted}\n----------------------------------\n`;
-        }
-
+        let memorySection = '';
         if (useMemory) {
             const lastUserMsg = [...finalMessages].reverse().find(m => m.role === 'user');
             if (lastUserMsg && typeof lastUserMsg.content === 'string') {
                 const mems = await retrieveTopMemories(db, serverConfig, lastUserMsg.content, 5);
-                systemContent += buildMemorySection(mems);
+                memorySection = buildMemorySection(mems);
             }
         }
 
-        systemContent += `\nInstructions: Use the real-time date, role persona, attached files, scraped web content, search results, and memory above to provide a clear, helpful, and accurate response.`;
+        const systemContent = buildSystemContext({
+            thaiDateStr, dayOfWeekTH, personaPrompt, textFiles, scrapedContent, searchResults, memorySection
+        });
 
         const systemPromptObj = {
             role: 'system',
@@ -815,6 +843,7 @@ app.post('/api/deepseek/chat', async (req, res) => {
 
         const payload = {
             ...otherParams,
+            model,
             messages: finalMessages
         };
 
@@ -942,8 +971,11 @@ app.post('/api/deepseek/chat', async (req, res) => {
         // Final metadata + cost summary
         let estimatedCostUSD = null;
         if (usage) {
-            const inputCost = ((usage.prompt_tokens || 0) / 1_000_000) * 0.14;
-            const outputCost = ((usage.completion_tokens || 0) / 1_000_000) * 0.28;
+            const { input, output } = getPricing(model);
+            const isDeepSeek = !model.startsWith('ollama:');
+            const peakMultiplier = isDeepSeek && isPeakHour() ? 2 : 1;
+            const inputCost = ((usage.prompt_tokens || 0) / 1_000_000) * input * peakMultiplier;
+            const outputCost = ((usage.completion_tokens || 0) / 1_000_000) * output * peakMultiplier;
             estimatedCostUSD = (inputCost + outputCost).toFixed(6);
         }
         send('done', {
@@ -982,83 +1014,195 @@ app.post('/api/deepseek/chat', async (req, res) => {
     }
 });
 
-// Proxy Ollama Chat Completions (with SSE streaming)
+// Proxy Ollama Chat Completions (with Web Search, URL Scraper, File Attachments, Vision, Tool Calling, and SSE streaming)
 app.post('/api/ollama/chat', async (req, res) => {
     try {
         const serverConfig = getServerConfig();
         const authHeader = serverConfig.ollama ? `Bearer ${serverConfig.ollama}` : '';
-        const { model, messages, useMemory, sessionId } = req.body;
+        const { model, messages, useMemory, sessionId, webSearch, personaPrompt, attachedFiles, useTools } = req.body;
         let finalMessages = Array.isArray(messages) ? [...messages] : [];
+        let searchResults = [];
+        let scrapedContent = null;
+        let executedTools = [];
 
+        const thaiDateStr = formatBangkokFull();
+        const dayOfWeekTH = bangkokDayOfWeek();
+
+        if (finalMessages.length > 0) {
+            const lastUserMsg = [...finalMessages].reverse().find(m => m.role === 'user');
+            if (lastUserMsg && lastUserMsg.content) {
+                const urlMatch = lastUserMsg.content.match(/https?:\/\/[^\s]+/i);
+                if (urlMatch) {
+                    scrapedContent = await fetchWebContent(urlMatch[0]);
+                }
+                if (webSearch) {
+                    searchResults = await performWebSearch(lastUserMsg.content);
+                }
+            }
+        }
+
+        const textFiles = (Array.isArray(attachedFiles) ? attachedFiles : []).filter(f => !f.type.startsWith('image/'));
+        const imageFiles = (Array.isArray(attachedFiles) ? attachedFiles : []).filter(f => f.type.startsWith('image/'));
+
+        let memorySection = '';
         if (useMemory) {
             const lastUser = [...finalMessages].reverse().find(m => m.role === 'user');
             if (lastUser && typeof lastUser.content === 'string') {
                 const mems = await retrieveTopMemories(db, serverConfig, lastUser.content, 5);
-                const section = buildMemorySection(mems);
-                if (section) finalMessages = [{ role: 'system', content: section.trim() }, ...finalMessages];
+                memorySection = buildMemorySection(mems);
+            }
+        }
+
+        const systemContent = buildSystemContext({
+            thaiDateStr, dayOfWeekTH, personaPrompt, textFiles, scrapedContent, searchResults, memorySection
+        });
+        finalMessages = [{ role: 'system', content: systemContent }, ...finalMessages];
+
+        // Ollama vision: images go on the user message as base64 (strip data URL prefix)
+        if (imageFiles.length > 0) {
+            const lastUserIdx = finalMessages.map(m => m.role).lastIndexOf('user');
+            if (lastUserIdx !== -1) {
+                const lastUser = finalMessages[lastUserIdx];
+                const images = imageFiles.map(img => {
+                    const str = String(img.content || '');
+                    const commaIdx = str.indexOf(',');
+                    return commaIdx !== -1 ? str.slice(commaIdx + 1) : str;
+                });
+                finalMessages[lastUserIdx] = { ...lastUser, images };
             }
         }
 
         sseHeaders(res);
+        const send = (event, data) => sseSend(res, event, data);
         const upstream = new AbortController();
         res.on('close', () => upstream.abort());
+        const ping = setInterval(() => {
+            try { res.write(': ping\n\n'); } catch (e) { /* ignore */ }
+        }, 20000);
 
-        const response = await fetch('https://ollama.com/api/chat', {
-            method: 'POST',
-            headers: {
-                'Authorization': authHeader,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                model: model || 'llama3',
-                messages: finalMessages,
-                stream: true
-            }),
-            signal: upstream.signal
-        });
+        const meta = {};
+        if (searchResults.length > 0) meta.searchResults = searchResults;
+        if (scrapedContent) meta.scrapedContent = scrapedContent;
+        if (Object.keys(meta).length > 0) send('meta', meta);
 
-        if (!response.ok || !response.body) {
-            const errText = await response.text().catch(() => '');
-            sseSend(res, 'error', { error: `Ollama API error (${response.status}): ${errText}` });
-            return res.end();
-        }
-
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = '';
         let fullContent = '';
+        let promptEvalCount = 0;
         let evalCount = 0;
 
-        while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            buffer += decoder.decode(value, { stream: true });
-            const lines = buffer.split('\n');
-            buffer = lines.pop();
-            for (const line of lines) {
-                if (!line.trim()) continue;
-                try {
-                    const json = JSON.parse(line);
+        const streamRound = async (reqPayload) => {
+            let response;
+            try {
+                response = await fetch('https://ollama.com/api/chat', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': authHeader,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(reqPayload),
+                    signal: upstream.signal
+                });
+            } catch (e) {
+                if (e.name === 'AbortError') { send('aborted', {}); return null; }
+                throw e;
+            }
+
+            if (!response.ok || !response.body) {
+                const errText = await response.text().catch(() => '');
+                send('error', { error: `Ollama API error (${response.status}): ${errText}` });
+                return null;
+            }
+
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
+            const toolCalls = {};
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split('\n');
+                buffer = lines.pop();
+                for (const line of lines) {
+                    if (!line.trim()) continue;
+                    let json;
+                    try { json = JSON.parse(line); } catch (e) { continue; }
                     if (json.message?.content) {
                         fullContent += json.message.content;
-                        sseSend(res, 'delta', { content: json.message.content });
+                        send('delta', { content: json.message.content });
                     }
+                    if (json.message?.tool_calls) {
+                        for (const tc of json.message.tool_calls) {
+                            const idx = tc.index ?? toolCalls.length;
+                            toolCalls[idx] = toolCalls[idx] || { id: '', type: 'function', function: { name: '', arguments: '' } };
+                            if (tc.id) toolCalls[idx].id = tc.id;
+                            if (tc.type) toolCalls[idx].type = tc.type;
+                            if (tc.function?.name) toolCalls[idx].function.name += tc.function.name;
+                            if (tc.function?.arguments) {
+                                const argStr = typeof tc.function.arguments === 'string' ? tc.function.arguments : JSON.stringify(tc.function.arguments || {});
+                                toolCalls[idx].function.arguments += argStr;
+                            }
+                        }
+                    }
+                    if (json.prompt_eval_count) promptEvalCount = json.prompt_eval_count;
                     if (json.eval_count) evalCount = json.eval_count;
-                } catch (e) { /* ignore malformed line */ }
+                }
             }
+
+            return { toolCalls: Object.values(toolCalls).filter(tc => tc.function?.name) };
+        };
+
+        let toolRounds = 0;
+        let streamPayload = {
+            model: model || 'llama3',
+            messages: finalMessages,
+            stream: true
+        };
+        if (useTools) {
+            streamPayload.tools = useMemory ? AVAILABLE_TOOLS : AVAILABLE_TOOLS.filter(t => t.function.name !== 'memory_search');
         }
 
-        sseSend(res, 'done', {
+        while (toolRounds < 5) {
+            const result = await streamRound(streamPayload);
+            if (!result) {
+                clearInterval(ping);
+                res.end();
+                return;
+            }
+
+            if (result.toolCalls.length === 0) break;
+
+            const assistantMsg = { role: 'assistant', content: fullContent || null, tool_calls: result.toolCalls };
+            finalMessages.push(assistantMsg);
+            for (const tc of result.toolCalls) {
+                const fnName = tc.function.name;
+                let fnArgs = {};
+                try { fnArgs = JSON.parse(tc.function.arguments || '{}'); } catch (e) { fnArgs = {}; }
+                const toolOutput = await executeToolCall(fnName, fnArgs, db, getServerConfig());
+                executedTools.push({ name: fnName, args: fnArgs, result: toolOutput });
+                send('meta', { executedTools: [executedTools[executedTools.length - 1]] });
+                finalMessages.push({ role: 'tool', tool_call_id: tc.id, content: toolOutput });
+            }
+            streamPayload = { ...streamPayload, messages: finalMessages };
+            toolRounds++;
+        }
+
+        send('done', {
             content: fullContent,
-            tokenUsage: evalCount ? { prompt_tokens: 0, completion_tokens: evalCount, total_tokens: evalCount } : null,
+            tokenUsage: (promptEvalCount || evalCount) ? {
+                prompt_tokens: promptEvalCount || 0,
+                completion_tokens: evalCount || 0,
+                total_tokens: (promptEvalCount || 0) + (evalCount || 0)
+            } : null,
             estimatedCostUSD: null,
-            searchResults: null,
-            scrapedContent: null,
-            executedTools: null
+            searchResults: searchResults.length > 0 ? searchResults : null,
+            scrapedContent: scrapedContent || null,
+            executedTools: executedTools.length > 0 ? executedTools : null
         });
+        clearInterval(ping);
         res.end();
 
-        if (useMemory && sessionId && serverConfig.deepseek) {
+        if (useMemory && sessionId && serverConfig.ollama) {
             extractAndStore(db, serverConfig, sessionId, [...finalMessages, ...(fullContent ? [{ role: 'assistant', content: fullContent }] : [])])
                 .then(result => {
                     if (result) console.log('[memory] extracted', result.facts, 'facts, summary:', result.summary);

@@ -1,6 +1,8 @@
 // WebDashboard/memory.js
 // Semantic memory service: Ollama Cloud embeddings + SQLite-backed storage.
 
+import { formatBangkokDateShort } from './time.js';
+
 const DEFAULT_EMBED_MODEL = 'nomic-embed-text';
 const DEDUP_THRESHOLD = 0.9;
 const OLLAMA_EMBED_URL = 'https://ollama.com/api/embed';
@@ -172,7 +174,7 @@ export function textMatchScore(query, content) {
 export function buildMemorySection(memories) {
   if (!Array.isArray(memories) || memories.length === 0) return '';
   const lines = memories.map(mem => {
-    const when = mem.created_at ? new Date(mem.created_at).toLocaleDateString('th-TH') : 'ไม่ทราบวัน';
+    const when = mem.created_at ? formatBangkokDateShort(new Date(mem.created_at)) : 'ไม่ทราบวัน';
     const src = mem.type === 'summary' ? `สรุปแชท (${when})` : `จำไว้ (${when})`;
     return `- ${mem.content} [${src}]`;
   });
@@ -263,7 +265,7 @@ export async function extractAndStore(db, serverConfig, sessionId, messages) {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${deepseekKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: serverConfig?.chatModel || 'deepseek-chat',
+        model: serverConfig?.chatModel || 'deepseek-v4-flash',
         messages: [
           { role: 'system', content: buildExtractionPrompt(messages) },
           { role: 'user', content: 'Extract memory from the transcript above.' }
