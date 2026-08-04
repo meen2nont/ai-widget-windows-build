@@ -1,5 +1,77 @@
 import React, { useState } from 'react';
-import { Copy, Check } from 'lucide-react';
+import { Copy, Check, Download, Maximize2 } from 'lucide-react';
+
+function ImageCard({ alt, src, onOpenLightbox }) {
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const handleDownload = (e) => {
+    e.stopPropagation();
+    fetch(src)
+      .then(res => res.blob())
+      .then(blob => {
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `generated-image-${Date.now()}.png`;
+        a.click();
+      })
+      .catch(() => {
+        window.open(src, '_blank');
+      });
+  };
+
+  const handleCopyPrompt = (e) => {
+    e.stopPropagation();
+    navigator.clipboard.writeText(alt || '');
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <div className="image-gen-card">
+      <div className="image-gen-preview-wrapper" onClick={() => !error && onOpenLightbox && onOpenLightbox(src, alt)}>
+        {loading && (
+          <div className="image-gen-skeleton">
+            <span>🎨 กำลังโหลดรูปภาพ...</span>
+          </div>
+        )}
+        <img
+          src={src}
+          alt={alt || 'Generated Image'}
+          className="image-gen-img"
+          style={{ display: loading ? 'none' : 'block' }}
+          onLoad={() => setLoading(false)}
+          onError={() => { setLoading(false); setError(true); }}
+        />
+        {error && (
+          <div style={{ padding: '1rem', color: 'var(--status-red)', textAlign: 'center', fontSize: '0.85rem' }}>
+            ไม่สามารถโหลดรูปภาพได้
+          </div>
+        )}
+      </div>
+      <div className="image-gen-toolbar">
+        <span className="image-gen-prompt" title={alt}>
+          {alt ? `Prompt: ${alt}` : 'Generated Image'}
+        </span>
+        <div className="image-gen-actions">
+          {alt && (
+            <button type="button" className="image-action-btn" onClick={handleCopyPrompt} title="Copy Prompt">
+              {copied ? <Check size={13} style={{ color: 'var(--status-green)' }} /> : <Copy size={13} />}
+              {copied ? 'Copied!' : 'Copy'}
+            </button>
+          )}
+          <button type="button" className="image-action-btn" onClick={handleDownload} title="Download Image">
+            <Download size={13} /> Download
+          </button>
+          <button type="button" className="image-action-btn" onClick={() => !error && onOpenLightbox && onOpenLightbox(src, alt)} title="Zoom/Lightbox">
+            <Maximize2 size={13} />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function CodeBlock({ code, language }) {
   const [copied, setCopied] = useState(false);
@@ -20,7 +92,7 @@ function CodeBlock({ code, language }) {
     }}>
       <div style={{
         display: 'flex',
-        justify: 'space-between',
+        justifyContent: 'space-between',
         alignItems: 'center',
         padding: '0.4rem 0.85rem',
         background: 'rgba(255, 255, 255, 0.05)',
@@ -64,18 +136,30 @@ function CodeBlock({ code, language }) {
   );
 }
 
-function formatInline(text) {
+function formatInline(text, onOpenLightbox) {
   if (!text) return '';
+  
+  // Check for image markdown: ![alt](url)
+  const imgMatch = /^!\[([^\]]*)\]\(([^)]+)\)$/.exec(text.trim());
+  if (imgMatch) {
+    return <ImageCard key={text} alt={imgMatch[1]} src={imgMatch[2]} onOpenLightbox={onOpenLightbox} />;
+  }
+
   const elements = [];
   let lastIndex = 0;
-  const inlineRegex = /`([^`]+)`|\*\*([^*]+)\*\*/g;
+  const inlineRegex = /!\[([^\]]*)\]\(([^)]+)\)|`([^`]+)`|\*\*([^*]+)\*\*/g;
   let match;
 
   while ((match = inlineRegex.exec(text)) !== null) {
     if (match.index > lastIndex) {
       elements.push(text.substring(lastIndex, match.index));
     }
-    if (match[1]) {
+    if (match[1] !== undefined && match[2] !== undefined) {
+      // Inline image ![alt](url)
+      elements.push(
+        <ImageCard key={match.index} alt={match[1]} src={match[2]} onOpenLightbox={onOpenLightbox} />
+      );
+    } else if (match[3]) {
       // Inline code `...`
       elements.push(
         <code key={match.index} style={{
@@ -86,12 +170,12 @@ function formatInline(text) {
           color: '#f0f6fc',
           fontFamily: 'monospace'
         }}>
-          {match[1]}
+          {match[3]}
         </code>
       );
-    } else if (match[2]) {
+    } else if (match[4]) {
       // Bold **...**
-      elements.push(<strong key={match.index}>{match[2]}</strong>);
+      elements.push(<strong key={match.index}>{match[4]}</strong>);
     }
     lastIndex = match.index + match[0].length;
   }
@@ -101,7 +185,7 @@ function formatInline(text) {
   return elements.length > 0 ? elements : text;
 }
 
-export default function MarkdownMessage({ content }) {
+export default function MarkdownMessage({ content, onOpenLightbox }) {
   if (!content) return null;
 
   // Split content by code blocks ```
@@ -159,7 +243,7 @@ export default function MarkdownMessage({ content }) {
                       <tr style={{ background: 'rgba(255, 255, 255, 0.06)' }}>
                         {headerCells.map((h, hIdx) => (
                           <th key={hIdx} style={{ padding: '0.5rem 0.75rem', border: '1px solid rgba(255, 255, 255, 0.1)', textAlign: 'left' }}>
-                            {formatInline(h)}
+                            {formatInline(h, onOpenLightbox)}
                           </th>
                         ))}
                       </tr>
@@ -171,7 +255,7 @@ export default function MarkdownMessage({ content }) {
                           <tr key={rIdx} style={{ borderBottom: '1px solid rgba(255, 255, 255, 0.05)' }}>
                             {cells.map((c, cIdx) => (
                               <td key={cIdx} style={{ padding: '0.45rem 0.75rem', border: '1px solid rgba(255, 255, 255, 0.08)' }}>
-                                {formatInline(c)}
+                                {formatInline(c, onOpenLightbox)}
                               </td>
                             ))}
                           </tr>
@@ -187,17 +271,17 @@ export default function MarkdownMessage({ content }) {
 
           // Headers
           if (line.startsWith('### ')) {
-            renderedElements.push(<h4 key={i} style={{ margin: '0.8rem 0 0.4rem', color: 'var(--accent-blue)' }}>{formatInline(line.replace('### ', ''))}</h4>);
+            renderedElements.push(<h4 key={i} style={{ margin: '0.8rem 0 0.4rem', color: 'var(--accent-blue)' }}>{formatInline(line.replace('### ', ''), onOpenLightbox)}</h4>);
           } else if (line.startsWith('## ')) {
-            renderedElements.push(<h3 key={i} style={{ margin: '1rem 0 0.5rem', color: 'var(--accent-blue)', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '0.3rem' }}>{formatInline(line.replace('## ', ''))}</h3>);
+            renderedElements.push(<h3 key={i} style={{ margin: '1rem 0 0.5rem', color: 'var(--accent-blue)', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '0.3rem' }}>{formatInline(line.replace('## ', ''), onOpenLightbox)}</h3>);
           } else if (line.startsWith('# ')) {
-            renderedElements.push(<h2 key={i} style={{ margin: '1.2rem 0 0.6rem', color: 'var(--text-primary)' }}>{formatInline(line.replace('# ', ''))}</h2>);
+            renderedElements.push(<h2 key={i} style={{ margin: '1.2rem 0 0.6rem', color: 'var(--text-primary)' }}>{formatInline(line.replace('# ', ''), onOpenLightbox)}</h2>);
           } else if (line.trim().startsWith('- ') || line.trim().startsWith('* ')) {
             // Bullet List
             renderedElements.push(
               <div key={i} style={{ display: 'flex', gap: '0.5rem', margin: '0.15rem 0 0.15rem 0.5rem' }}>
                 <span style={{ color: 'var(--accent-blue)' }}>•</span>
-                <div>{formatInline(line.trim().substring(2))}</div>
+                <div>{formatInline(line.trim().substring(2), onOpenLightbox)}</div>
               </div>
             );
           } else if (line.trim() === '') {
@@ -206,7 +290,7 @@ export default function MarkdownMessage({ content }) {
             // Normal Line
             renderedElements.push(
               <div key={i} style={{ margin: '0.15rem 0' }}>
-                {formatInline(line)}
+                {formatInline(line, onOpenLightbox)}
               </div>
             );
           }
@@ -218,3 +302,4 @@ export default function MarkdownMessage({ content }) {
     </div>
   );
 }
+

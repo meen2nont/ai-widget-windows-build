@@ -4,7 +4,7 @@ import {
   MessageSquare, LayoutGrid, Copy, Send, Clock, Globe, Search,
   Plus, Trash2, Download, Link2, Pencil, RotateCcw, Paperclip, Wrench, FileText, X, Check,
   Mic, MicOff, Volume2, VolumeX, BookOpen, DollarSign, ChevronDown,
-  Bot, Code, PenLine, Languages, BarChart, Printer, Mail, Brain, LogOut
+  Bot, Code, PenLine, Languages, BarChart, Printer, Mail, Brain, LogOut, Palette
 } from 'lucide-react';
 import { DeepSeekIcon, OllamaIcon, OllamaPayIcon } from './components/AIIcons';
 import { encryptAndSaveConfig, loadAndDecryptConfig } from './utils/crypto';
@@ -58,7 +58,7 @@ function formatPeriod(iso) {
 }
 
 // Meta badges (search / scrape / tools / files) shared by saved + streaming messages
-function MetaBadges({ m }) {
+function MetaBadges({ m, onOpenLightbox }) {
   return (
     <>
 
@@ -70,9 +70,26 @@ function MetaBadges({ m }) {
       )}
 
       {m?.attachedFiles?.length > 0 && (
-        <div className="meta-badge file">
-          <FileText size={14} />
-          <span>แนบไฟล์: <strong>{m.attachedFiles.map(f => f.name).join(', ')}</strong></span>
+        <div className="meta-badge file" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: '0.4rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+            <FileText size={14} />
+            <span>แนบไฟล์: <strong>{m.attachedFiles.map(f => f.name).join(', ')}</strong></span>
+          </div>
+          {m.attachedFiles.some(f => f.type?.startsWith('image/')) && (
+            <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginTop: '0.2rem' }}>
+              {m.attachedFiles.filter(f => f.type?.startsWith('image/')).map((f, imgIdx) => (
+                <img
+                  key={imgIdx}
+                  src={f.thumbnailUrl || f.url || f.content}
+                  alt={f.name}
+                  className="file-chip-img"
+                  style={{ cursor: 'pointer', width: '48px', height: '48px', borderRadius: '6px', border: '1px solid var(--overlay-10)', objectFit: 'cover' }}
+                  onClick={() => onOpenLightbox && onOpenLightbox(f.url || f.content, f.name)}
+                  title={`คลิกเพื่อพรีวิว ${f.name}`}
+                />
+              ))}
+            </div>
+          )}
         </div>
       )}
     </>
@@ -114,8 +131,8 @@ async function parseSSEEvents(response, handlers) {
 const originalFetch = window.fetch;
 window.fetch = async (...args) => {
   let [resource, config] = args;
-  
-  if (typeof resource === 'string' && resource.startsWith('/api/') && !resource.startsWith('/api/auth/')) {
+
+  if (typeof resource === 'string' && resource.startsWith('/api/') && !resource.startsWith('/api/auth/') && !resource.startsWith('/api/images/')) {
     const token = localStorage.getItem('app_session_token');
     if (token) {
       config = config || {};
@@ -125,7 +142,7 @@ window.fetch = async (...args) => {
       };
     }
   }
-  
+
   const response = await originalFetch(resource, config);
   if (response.status === 401) {
     window.dispatchEvent(new Event('auth-failed'));
@@ -414,6 +431,7 @@ function App() {
   const [chatPane, setChatPane] = useState('chat');
   const [promptInput, setPromptInput] = useState('');
   const [selectedModel, setSelectedModel] = useState('auto');
+  const [imageModel, setImageModel] = useState('sana');
   const [lastResolvedModel, setLastResolvedModel] = useState(null);
   const [now, setNow] = useState(() => new Date());
   const [selectedPersona, setSelectedPersona] = useState('general');
@@ -432,6 +450,7 @@ function App() {
   const [confirmDeleteSession, setConfirmDeleteSession] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [showMobileChatSettings, setShowMobileChatSettings] = useState(false);
+  const [lightboxImg, setLightboxImg] = useState(null);
   const chatEndRef = useRef(null);
   const fileInputRef = useRef(null);
   const abortRef = useRef(null);
@@ -468,6 +487,7 @@ function App() {
 
   // Load chat sessions from server / localStorage
   useEffect(() => {
+    if (authState !== 'authenticated') return;
     async function loadSessions() {
       try {
         const res = await fetch('/api/chats');
@@ -491,9 +511,14 @@ function App() {
       }
     }
     loadSessions();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authState]);
 
-  useEffect(() => { loadMemories(); }, []);
+  useEffect(() => {
+    if (authState !== 'authenticated') return;
+    loadMemories();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authState]);
 
   // Save chat sessions helper
   const saveSessions = (updatedSessions) => {
@@ -680,14 +705,73 @@ function App() {
     const files = Array.from(e.target.files || []);
     files.forEach(file => {
       const reader = new FileReader();
-      reader.onload = (event) => {
-        const content = event.target.result;
-        setAttachedFiles(prev => [...prev, {
-          name: file.name,
-          size: file.size,
-          type: file.type,
-          content: content
-        }]);
+      reader.onload = async (event) => {
+        const rawContent = event.target.result;
+        if (file.type.startsWith('image/')) {
+          // Generate 256px thumbnail on Canvas
+          const img = document.createElement('img');
+          img.onload = async () => {
+            const canvas = document.createElement('canvas');
+            const maxDim = 256;
+            let w = img.width || maxDim;
+            let h = img.height || maxDim;
+            if (w > maxDim || h > maxDim) {
+              if (w > h) { h = Math.round((h * maxDim) / w); w = maxDim; }
+              else { w = Math.round((w * maxDim) / h); h = maxDim; }
+            }
+            canvas.width = w;
+            canvas.height = h;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, w, h);
+            const thumbContent = canvas.toDataURL(file.type || 'image/png', 0.85);
+
+            // Send to server to save original + thumbnail on disk
+            try {
+              const res = await fetch('/api/upload/image', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  content: rawContent,
+                  thumbContent,
+                  name: file.name,
+                  type: file.type
+                })
+              });
+              if (res.ok) {
+                const data = await res.json();
+                setAttachedFiles(prev => [...prev, {
+                  name: file.name,
+                  size: file.size,
+                  type: file.type,
+                  content: data.url,
+                  url: data.url,
+                  thumbnailUrl: data.thumbnailUrl
+                }]);
+                return;
+              }
+            } catch (err) {
+              console.error('Image upload failed:', err);
+            }
+
+            // Fallback
+            setAttachedFiles(prev => [...prev, {
+              name: file.name,
+              size: file.size,
+              type: file.type,
+              content: rawContent,
+              url: rawContent,
+              thumbnailUrl: thumbContent
+            }]);
+          };
+          img.src = rawContent;
+        } else {
+          setAttachedFiles(prev => [...prev, {
+            name: file.name,
+            size: file.size,
+            type: file.type,
+            content: rawContent
+          }]);
+        }
       };
       if (file.type.startsWith('image/')) {
         reader.readAsDataURL(file);
@@ -1074,6 +1158,47 @@ function App() {
     setElapsedSeconds(0);
     elapsedTimerRef.current = setInterval(() => setElapsedSeconds(s => s + 1), 1000);
 
+    const trimmedUserText = userText.trim();
+    if (trimmedUserText.startsWith('/image') || trimmedUserText.startsWith('/draw')) {
+      const imagePrompt = trimmedUserText.replace(/^\/(image|draw)\s*/, '').trim();
+      if (!imagePrompt) {
+        showToast('กรุณาระบุรายละเอียดภาพ เช่น /image แมวสวมหมวกอวกาศ');
+        setIsGenerating(false);
+        if (elapsedTimerRef.current) clearInterval(elapsedTimerRef.current);
+        return;
+      }
+      
+      try {
+        setStreamingContent('🎨 กำลังสร้างรูปภาพ...');
+        const response = await fetch('/api/image/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prompt: imagePrompt, model: imageModel, history: messages.slice(-6) })
+        });
+        const data = await response.json();
+        if (data.success && data.imageUrl) {
+          const assistantContent = `![${imagePrompt}](${data.imageUrl})`;
+          const assistantMsgObj = {
+            role: 'assistant',
+            content: assistantContent,
+            id: newMsgId(),
+            model: 'Pollinations.ai'
+          };
+          appendAssistantMessage(assistantMsgObj);
+        } else {
+          showToast('ไม่สามารถสร้างรูปภาพได้');
+        }
+      } catch (err) {
+        console.error('Image gen error:', err);
+        showToast('เกิดข้อผิดพลาดในการสร้างภาพ');
+      } finally {
+        setIsGenerating(false);
+        setStreamingContent('');
+        if (elapsedTimerRef.current) clearInterval(elapsedTimerRef.current);
+      }
+      return;
+    }
+
     const activePersonaPrompt = selectedPersona === 'custom'
       ? customPersonaPrompt
       : PERSONAS[selectedPersona]?.prompt || '';
@@ -1226,12 +1351,14 @@ function App() {
   };
 
   useEffect(() => {
+    if (authState !== 'authenticated') return;
     fetchData();
     if (refreshInterval > 0) {
       const interval = setInterval(fetchData, refreshInterval * 1000);
       return () => clearInterval(interval);
     }
-  }, [keys, refreshInterval]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authState, keys, refreshInterval]);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -2024,12 +2151,12 @@ function App() {
                 {messages.map((m, idx) => (
                   <div key={m.id || idx} className={`message-wrapper ${m.role}`}>
                     <div className={`message-bubble ${m.role}`}>
-                      <MetaBadges m={m} />
+                      <MetaBadges m={m} onOpenLightbox={(src, alt) => setLightboxImg({ src, alt })} />
                       {/* Message Content with Markdown & Code Highlighting */}
                       {m.role === 'user' ? (
                         <div style={{ whiteSpace: 'pre-wrap' }}>{m.content}</div>
                       ) : (
-                        <MarkdownMessage content={m.content} />
+                        <MarkdownMessage content={m.content} onOpenLightbox={(src, alt) => setLightboxImg({ src, alt })} />
                       )}
                     </div>
 
@@ -2147,9 +2274,9 @@ function App() {
                 {isGenerating && (
                   <div className="message-wrapper assistant">
                     <div className="message-bubble assistant">
-                      <MetaBadges m={streamingMeta} />
+                      <MetaBadges m={streamingMeta} onOpenLightbox={(src, alt) => setLightboxImg({ src, alt })} />
                       {streamingContent ? (
-                        <MarkdownMessage content={streamingContent} />
+                        <MarkdownMessage content={streamingContent} onOpenLightbox={(src, alt) => setLightboxImg({ src, alt })} />
                       ) : (
                         <div className="chat-typing-indicator">
                           <span className="typing-dot" />
@@ -2179,6 +2306,7 @@ function App() {
               {/* Quick Prompt Pills */}
               {messages.length <= 1 && (
                 <div className="prompt-pills-container">
+                  <button type="button" className="prompt-pill" onClick={() => setPromptInput('/image วาดภาพแมวอวกาศสไตล์ Cyberpunk')}><Palette size={13} /> สร้างรูปภาพ (/image)</button>
                   <button type="button" className="prompt-pill" onClick={() => setPromptInput('ช่วยสรุปข่าวสารและเหตุการณ์สำคัญประจำวันนี้ให้ฟังหน่อย')}><Globe size={13} /> ข่าวอัปเดตวันนี้</button>
                   <button type="button" className="prompt-pill" onClick={() => setPromptInput('ช่วยตรวจเช็กและแนะนำการ refactor โค้ดส่วนนี้ให้เป็น Clean Code')}><Code size={13} /> ตรวจสอบโค้ด</button>
                   <button type="button" className="prompt-pill" onClick={() => setPromptInput('ช่วยวิเคราะห์ข้อมูลต่อไปนี้และจัดรูปแบบให้อยู่ในตาราง Markdown')}><BarChart size={13} /> สรุปตารางข้อมูล</button>
@@ -2201,7 +2329,14 @@ function App() {
                   {attachedFiles.map((file, i) => (
                     <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', background: file.type.startsWith('image/') ? 'rgba(10, 132, 255, 0.12)' : 'rgba(191, 90, 242, 0.12)', border: `1px solid ${file.type.startsWith('image/') ? 'rgba(10, 132, 255, 0.3)' : 'rgba(191, 90, 242, 0.3)'}`, padding: '0.25rem 0.65rem', borderRadius: '6px', fontSize: '0.8rem', color: file.type.startsWith('image/') ? 'var(--accent-blue)' : 'var(--status-purple)' }}>
                       {file.type.startsWith('image/') ? (
-                        <img src={file.content} alt={file.name} className="file-chip-img" />
+                        <img
+                          src={file.thumbnailUrl || file.url || file.content}
+                          alt={file.name}
+                          className="file-chip-img"
+                          style={{ cursor: 'pointer' }}
+                          onClick={() => setLightboxImg({ src: file.url || file.content, alt: file.name })}
+                          title="คลิกเพื่อพรีวิวรูปภาพ"
+                        />
                       ) : (
                         <FileText size={14} />
                       )}
@@ -2209,6 +2344,30 @@ function App() {
                       <X size={14} style={{ cursor: 'pointer', color: '#f85149' }} onClick={() => removeAttachedFile(i)} />
                     </div>
                   ))}
+                </div>
+              )}
+
+              {/* Image Model Selector Bar when using /image command */}
+              {(promptInput.startsWith('/image') || promptInput.startsWith('/draw')) && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.4rem', padding: '0.35rem 0.75rem', background: 'rgba(10, 132, 255, 0.1)', borderRadius: '8px', border: '1px solid rgba(10, 132, 255, 0.25)', fontSize: '0.8rem', color: 'var(--accent-blue)' }}>
+                  <Palette size={14} />
+                  <span style={{ fontWeight: 600 }}>โมเดลสร้างภาพ:</span>
+                  <select
+                    value={imageModel}
+                    onChange={e => setImageModel(e.target.value)}
+                    style={{
+                      background: 'var(--surface-bg-alt)',
+                      border: '1px solid var(--panel-border)',
+                      color: 'var(--text-primary)',
+                      borderRadius: '6px',
+                      padding: '0.2rem 0.5rem',
+                      fontSize: '0.8rem',
+                      cursor: 'pointer',
+                      outline: 'none'
+                    }}
+                  >
+                    <option value="sana">🎨 Sana (โมเดลเดียวที่ใช้ได้ / ค่าเริ่มต้น)</option>
+                  </select>
                 </div>
               )}
 
@@ -2222,6 +2381,20 @@ function App() {
                   title="แนบไฟล์ (ข้อความ, โค้ด, ไฟล์ข้อมูล, รูปภาพ)"
                 >
                   <Paperclip size={18} style={{ color: 'var(--text-secondary)' }} />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!promptInput.startsWith('/image')) {
+                      setPromptInput('/image ' + promptInput.trim());
+                    }
+                  }}
+                  className="secondary"
+                  style={{ padding: '0.5rem 0.65rem', border: 'none', background: 'transparent' }}
+                  title="สร้างรูปภาพ (ใช้คำสั่ง /image)"
+                >
+                  <Palette size={18} style={{ color: promptInput.startsWith('/image') ? 'var(--accent-blue)' : 'var(--text-secondary)' }} />
                 </button>
 
                 <textarea 
@@ -2313,6 +2486,23 @@ function App() {
           setConfirmDeleteSession={setConfirmDeleteSession}
           confirmDeleteSessionNow={confirmDeleteSessionNow}
         />
+      )}
+
+      {/* Lightbox Modal */}
+      {lightboxImg && (
+        <div className="image-lightbox-overlay" onClick={() => setLightboxImg(null)}>
+          <div className="image-lightbox-container" onClick={e => e.stopPropagation()}>
+            <button type="button" className="image-lightbox-close" onClick={() => setLightboxImg(null)} title="Close">
+              <X size={20} />
+            </button>
+            <img src={lightboxImg.src} alt={lightboxImg.alt || 'Full Resolution'} className="image-lightbox-img" />
+            {lightboxImg.alt && (
+              <div style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', textAlign: 'center', maxWidth: '800px' }}>
+                Prompt: {lightboxImg.alt}
+              </div>
+            )}
+          </div>
+        </div>
       )}
 
       {/* Toast notification */}

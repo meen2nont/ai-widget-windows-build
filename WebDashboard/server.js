@@ -16,10 +16,14 @@ const __dirname = dirname(__filename);
 const DATA_DIR = process.env.DATA_DIR ? process.env.DATA_DIR : join(__dirname, 'data');
 const CONFIG_FILE = join(DATA_DIR, 'config.json');
 const DB_FILE = join(DATA_DIR, 'database.sqlite');
+const IMAGES_DIR = join(DATA_DIR, 'images');
 
-// Ensure data directory exists
+// Ensure data directory and images directory exist
 if (!fs.existsSync(DATA_DIR)) {
     fs.mkdirSync(DATA_DIR, { recursive: true });
+}
+if (!fs.existsSync(IMAGES_DIR)) {
+    fs.mkdirSync(IMAGES_DIR, { recursive: true });
 }
 
 // Initialize SQLite database
@@ -246,7 +250,7 @@ app.post('/api/user/change-password', (req, res) => {
 });
 
 app.use('/api', (req, res, next) => {
-    if (req.path.startsWith('/auth/')) return next();
+    if (req.path.startsWith('/auth/') || req.path.startsWith('/images/')) return next();
     
     const hash = getAdminHash();
     if (!hash) return res.status(401).json({ error: 'Setup required', code: 'NEEDS_SETUP' });
@@ -265,6 +269,19 @@ app.use('/api', (req, res, next) => {
     
     next();
 });
+
+// Serve generated images statically with correct MIME types and CORS
+app.use('/api/images', (req, res, next) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+    // Set correct content-type based on file extension
+    if (req.path.endsWith('.jpg') || req.path.endsWith('.jpeg')) {
+        res.setHeader('Content-Type', 'image/jpeg');
+    } else if (req.path.endsWith('.png')) {
+        res.setHeader('Content-Type', 'image/png');
+    }
+    next();
+}, express.static(IMAGES_DIR));
 // ────────────────────────────────────────────────────────────────────────
 
 // Get Config Endpoint — returns service availability booleans, NOT actual API keys
@@ -507,6 +524,21 @@ const AVAILABLE_TOOLS = [
                 required: ["query"]
             }
         }
+    },
+    {
+        type: "function",
+        function: {
+            name: "generate_image",
+            description: "Generate an image from a SHORT English prompt (5-10 words, no long descriptions). Call this when the user asks to draw or create an image.",
+            parameters: {
+                type: "object",
+                properties: {
+                    prompt: { type: "string", description: "Short English prompt describing the image (5-10 words)" },
+                    aspect_ratio: { type: "string", description: "Aspect ratio: 1:1 (default), 16:9, 9:16, 4:3, 3:4", "enum": ["1:1", "16:9", "9:16", "4:3", "3:4"] }
+                },
+                required: ["prompt"]
+            }
+        }
     }
 ];
 
@@ -580,9 +612,169 @@ function safeEvaluate(expr) {
   return result;
 }
 
+// Helper to translate Thai/non-Latin text to English using free fallback translation API
+async function translateThaiToEnglish(text) {
+    if (!text || typeof text !== 'string') return text;
+    // Return immediately if input is pure ASCII/Latin
+    if (!/[^\u0000-\u007F]/.test(text)) return text;
+    try {
+        const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text.trim())}&langpair=th|en`;
+        const resp = await fetch(url, { signal: AbortSignal.timeout(5000) });
+        if (resp.ok) {
+            const data = await resp.json();
+            const translated = data.responseData?.translatedText;
+            if (translated && typeof translated === 'string') {
+                return translated.replace(/^["'`]|["'`]$/g, '').trim();
+            }
+        }
+    } catch (e) {
+        console.warn('[translateThaiToEnglish] Fallback translation failed:', e.message);
+    }
+    // Last resort: strip non-Latin chars so image APIs don't get garbled text
+    const latinOnly = text.replace(/[^\u0000-\u024F\s.,!?;:'"()\-–—/&]/gu, '').replace(/\s+/g, ' ').trim();
+    return latinOnly || 'image';
+}
+
+// Helper to translate & refine user prompt into a SHORT English image generation prompt.
+// Pollinations sana model produces better images with concise prompts (5-12 words).
+// No LLM is used — just translation + style keywords for speed and quality.
+// Returns { prompt: string, recommendedModel: string }
+async function refinePromptForImage(inputPrompt, serverConfig, recentHistory = []) {
+    if (!inputPrompt || typeof inputPrompt !== 'string') return { prompt: '', recommendedModel: 'sana' };
+    let clean = inputPrompt.trim();
+    if (!clean) return { prompt: '', recommendedModel: 'sana' };
+
+    const FIXED_MODEL = 'sana';
+
+    // Detect if user wants text/typography in the image
+    const textHeavy = /โปสเตอร์|poster|ป้าย|sign|banner|flyer|โฆษณา|advert|brochure|logo|โลโก้|card|การ์ด|นามบัตร|business card/i.test(clean);
+
+    // Strip command prefixes
+    clean = clean.replace(/^\/(image|draw|gen)\s*/i, '')
+        .replace(/^(can (you|i) |please )?(make|draw|create|generate|do|วาด|สร้าง|ทำ|เจน)\s*/i, '')
+        .replace(/^(รูป|ภาพ|ขอ|เอา)\s*/i, '')
+        .replace(/\s*(ให้|หน่อย|ที|ด้วย)$/i, '')
+        .trim();
+
+    // Infer from recent chat history if the prompt is a vague follow-up
+    if (clean.length < 3 && Array.isArray(recentHistory) && recentHistory.length > 0) {
+        const lastUser = recentHistory.filter(m => m.role === 'user').pop();
+        if (lastUser && lastUser.content) {
+            clean = lastUser.content.trim();
+        }
+    }
+    if (!clean || clean.length < 2) clean = 'beautiful artwork';
+
+    // Translate non-Latin text to English using free translation API
+    const english = await translateThaiToEnglish(clean);
+
+    // Strip remaining non-Latin chars as safety net
+    let latin = english.replace(/[^\u0000-\u024F\s.,!?;:'"()\-–—/&]/gu, '').replace(/\s+/g, ' ').trim() || 'artwork';
+    // Remove articles and filler words for a tighter keyword-style prompt
+    latin = latin
+        .replace(/\b(a|an|the|is|are|was|were|of|to|for|by|with|and|it|this|that|there|then)\b/gi, '')
+        .replace(/[.,!?;:'"()]/g, '')
+        .replace(/\s+/g, ' ').trim() || latin;
+
+    // Build a short, effective prompt (sana works best with 5-12 word keywords)
+    let prompt = textHeavy
+        ? `${latin} professional design photorealistic 8k`
+        : `${latin} photorealistic detailed 8k`;
+    // Limit to ~15 words max
+    const words = prompt.split(/\s+/);
+    if (words.length > 15) prompt = words.slice(0, 15).join(' ');
+
+    return { prompt, recommendedModel: FIXED_MODEL };
+}
+
+// Helper to fetch and cache generated images locally to disk (data/images) with robust candidate fallback
+async function saveGeneratedImageLocally(encodedPrompt, modelName = 'sana', w = 1024, h = 1024, filenamePrefix = 'gen_orig') {
+    // Safety net: decode, strip any non-Latin characters that could garble the image, re-encode
+    let safePrompt = encodedPrompt;
+    try {
+        const decoded = decodeURIComponent(encodedPrompt);
+        if (/[^\u0000-\u024F\s\p{P}]/u.test(decoded)) {
+            const latinOnly = decoded.replace(/[^\u0000-\u024F\s.,!?;:'"()\-–—/&]/gu, '').replace(/\s+/g, ' ').trim();
+            if (latinOnly.length > 10) {
+                safePrompt = encodeURIComponent(latinOnly);
+                console.warn('[saveGeneratedImageLocally] Stripped non-Latin chars from prompt');
+            }
+        }
+    } catch (e) { /* keep original if decode fails */ }
+
+    const seed = Math.floor(Math.random() * 10000000);
+    // Pollinations currently only supports "sana" — ignore other model names
+    const effectiveModel = 'sana';
+    // Cap dimensions at 768 (Pollinations max supported)
+    const effectiveW = Math.min(w, 768);
+    const effectiveH = Math.min(h, 768);
+
+    const imageUrl = `https://image.pollinations.ai/prompt/${safePrompt}?model=${effectiveModel}&width=${effectiveW}&height=${effectiveH}&nologo=true&seed=${seed}&enhance=true`;
+
+    try {
+        const resp = await fetch(imageUrl, { signal: AbortSignal.timeout(60000) });
+        if (resp.ok) {
+            const contentType = resp.headers.get('content-type') || '';
+            if (contentType.includes('image')) {
+                const buffer = Buffer.from(await resp.arrayBuffer());
+                if (buffer && buffer.length > 5000) {
+                    // Save as .jpg since Pollinations returns JPEG
+                    const ext = contentType.includes('png') ? 'png' : 'jpg';
+                    const filename = `${filenamePrefix}_${Date.now()}_${Math.floor(Math.random() * 10000)}.${ext}`;
+                    const filePath = join(IMAGES_DIR, filename);
+                    fs.writeFileSync(filePath, buffer);
+                    return `/api/images/${filename}`;
+                }
+            }
+        }
+    } catch (e) {
+        console.warn(`[saveGeneratedImageLocally] Fetch failed:`, e.message);
+    }
+
+    // Fallback: return remote URL directly
+    return imageUrl;
+}
+
 // Helper to execute function tools
 async function executeToolCall(toolName, args, db, serverConfig) {
     try {
+        if (toolName === 'generate_image') {
+            const promptStr = args.prompt || '';
+            const cleanPrompt = promptStr.trim();
+            const refined = await refinePromptForImage(cleanPrompt, serverConfig);
+            const englishPrompt = refined.prompt;
+            const seed = Math.floor(Math.random() * 10000000);
+            // Sanitize prompt for URL safety
+            const sanitizedPrompt = englishPrompt
+                .replace(/[:/?#[\]@!$&'()*+,;=]/g, ' ')
+                .replace(/\s+/g, ' ')
+                .trim();
+            const encodedPrompt = encodeURIComponent(sanitizedPrompt);
+            const modelName = 'sana'; // Pollinations only supports sana now
+
+            // Handle aspect ratio from args
+            let w = 768, h = 768;
+            if (args.aspect_ratio === '16:9') { w = 768; h = 432; }
+            else if (args.aspect_ratio === '9:16') { w = 432; h = 768; }
+            else if (args.aspect_ratio === '4:3') { w = 768; h = 576; }
+            else if (args.aspect_ratio === '3:4') { w = 576; h = 768; }
+
+            const imageUrl = await saveGeneratedImageLocally(encodedPrompt, modelName, w, h, 'gen_orig');
+            // Skip separate thumbnail generation — frontend can resize via CSS
+            const thumbnailUrl = imageUrl;
+
+            return JSON.stringify({
+                status: 'success',
+                message: 'Image generated successfully',
+                imageUrl,
+                thumbnailUrl,
+                prompt: cleanPrompt,
+                englishPrompt: sanitizedPrompt,
+                model: modelName,
+                aspectRatio: args.aspect_ratio || '1:1',
+                markdown: `![${cleanPrompt}](${imageUrl})`
+            });
+        }
         if (toolName === 'memory_search') {
             const results = await retrieveTopMemories(db, serverConfig, (args.query || ''));
             return JSON.stringify(results.map(r => ({
@@ -645,7 +837,10 @@ function buildSystemContext({ thaiDateStr, dayOfWeekTH, personaPrompt, textFiles
         systemContent += memorySection;
     }
 
-    systemContent += `\nInstructions: Use the real-time date, role persona, attached files, scraped web content, search results, and memory above to provide a clear, helpful, and accurate response.`;
+    systemContent += `\nInstructions:
+1. Language & Reasoning Protocol: When the user asks in Thai (หรือภาษาไทย), internally process and analyze the query in English for maximum reasoning depth, technical precision, and logical comprehension. Synthesize and deliver the final output directly in fluent, natural, and polite Thai. Do NOT output raw translation steps or intermediate English thinking; respond directly in Thai.
+2. Context & Data: Use the real-time date, role persona, attached files, scraped web content, search results, and memory above to provide an accurate response.
+3. Image Generation: If the user requests to draw or create an image, call the 'generate_image' tool with a SHORT descriptive English prompt (5-10 words max). Keep it concise — no long descriptions.`;
     return systemContent;
 }
 
@@ -751,6 +946,97 @@ app.post('/api/memories/extract', async (req, res) => {
   }
 });
 
+// Upload User Image Endpoint (Saves Original + Thumbnail to file disk)
+app.post('/api/upload/image', (req, res) => {
+  try {
+    const { content, thumbContent, name, type } = req.body || {};
+    if (!content || typeof content !== 'string') {
+      return res.status(400).json({ error: 'Image content is required' });
+    }
+
+    const id = `${Date.now()}_${Math.floor(Math.random() * 10000)}`;
+    const ext = type?.includes('jpeg') || type?.includes('jpg') ? 'jpg' : 'png';
+    
+    // Save original image file
+    const origFilename = `user_orig_${id}.${ext}`;
+    const origPath = join(IMAGES_DIR, origFilename);
+    const origBase64 = content.replace(/^data:image\/\w+;base64,/, '');
+    fs.writeFileSync(origPath, Buffer.from(origBase64, 'base64'));
+    const url = `/api/images/${origFilename}`;
+
+    // Save thumbnail image file
+    let thumbnailUrl = url;
+    if (thumbContent && typeof thumbContent === 'string') {
+      const thumbFilename = `user_thumb_${id}.${ext}`;
+      const thumbPath = join(IMAGES_DIR, thumbFilename);
+      const thumbBase64 = thumbContent.replace(/^data:image\/\w+;base64,/, '');
+      fs.writeFileSync(thumbPath, Buffer.from(thumbBase64, 'base64'));
+      thumbnailUrl = `/api/images/${thumbFilename}`;
+    }
+
+    res.json({
+      url,
+      thumbnailUrl,
+      name: name || 'image',
+      type: type || 'image/png'
+    });
+  } catch (error) {
+    console.error('[upload-image] Error:', error);
+    res.status(500).json({ error: 'Failed to upload image' });
+  }
+});
+
+// ── Image Generation API ────────────────────────────────────────────────
+app.post('/api/image/generate', async (req, res) => {
+  try {
+    const { prompt, width = 768, height = 768, aspect_ratio = '1:1', model = 'sana', history = [] } = req.body || {};
+    if (!prompt || typeof prompt !== 'string' || !prompt.trim()) {
+      return res.status(400).json({ error: 'Prompt is required' });
+    }
+
+    // Pollinations caps at 768 — clamp all dimensions
+    let w = Math.min(parseInt(width, 10) || 768, 768);
+    let h = Math.min(parseInt(height, 10) || 768, 768);
+    if (aspect_ratio === '16:9') { w = 768; h = 432; }
+    else if (aspect_ratio === '9:16') { w = 432; h = 768; }
+    else if (aspect_ratio === '4:3') { w = 768; h = 576; }
+    else if (aspect_ratio === '3:4') { w = 576; h = 768; }
+
+    const serverConfig = getServerConfig();
+    const cleanPrompt = prompt.trim();
+    const refined = await refinePromptForImage(cleanPrompt, serverConfig, history);
+    const englishPrompt = refined.prompt;
+
+    // Sanitize and encode prompt
+    const sanitizedPrompt = englishPrompt
+        .replace(/[:/?#[\]@!$&'()*+,;=]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+    const encodedPrompt = encodeURIComponent(sanitizedPrompt);
+    // Pollinations only supports "sana" — ignore client model
+    const imgModel = 'sana';
+    const seed = Math.floor(Math.random() * 10000000);
+
+    const imageUrl = await saveGeneratedImageLocally(encodedPrompt, imgModel, w, h, 'gen_orig');
+    // Skip separate thumbnail generation — frontend can resize via CSS
+    const thumbnailUrl = imageUrl;
+
+    res.json({
+      success: true,
+      imageUrl,
+      thumbnailUrl,
+      prompt: cleanPrompt,
+      englishPrompt: sanitizedPrompt,
+      model: imgModel,
+      seed,
+      provider: 'pollinations'
+    });
+  } catch (error) {
+    console.error('[image-generate] Error:', error);
+    res.status(500).json({ error: 'Failed to generate image' });
+  }
+});
+
 // ── Server-Sent Events (SSE) Helpers ─────────────────────────────────────
 function sseHeaders(res) {
     res.setHeader('Content-Type', 'text/event-stream');
@@ -825,6 +1111,20 @@ app.post('/api/deepseek/chat', async (req, res) => {
         
         finalMessages = [systemPromptObj, ...finalMessages];
 
+const getImageDataUrl = (imgObj) => {
+    const raw = imgObj.url || imgObj.content || '';
+    if (typeof raw === 'string' && raw.startsWith('/api/images/')) {
+        const filename = raw.replace('/api/images/', '');
+        const filePath = join(IMAGES_DIR, filename);
+        if (fs.existsSync(filePath)) {
+            const buf = fs.readFileSync(filePath);
+            const ext = filename.endsWith('.jpg') || filename.endsWith('.jpeg') ? 'jpeg' : 'png';
+            return `data:image/${ext};base64,${buf.toString('base64')}`;
+        }
+    }
+    return raw;
+};
+
         // Build Vision/Multimodal content for last user message if images are attached
         if (imageFiles.length > 0) {
             const lastUserIdx = finalMessages.map(m => m.role).lastIndexOf('user');
@@ -834,7 +1134,7 @@ app.post('/api/deepseek/chat', async (req, res) => {
                     { type: 'text', text: lastUser.content || 'Analyze the attached image(s).' },
                     ...imageFiles.map(img => ({
                         type: 'image_url',
-                        image_url: { url: img.content }
+                        image_url: { url: getImageDataUrl(img) }
                     }))
                 ];
                 finalMessages[lastUserIdx] = { ...lastUser, content: multimodalContent };
@@ -968,6 +1268,19 @@ app.post('/api/deepseek/chat', async (req, res) => {
             toolRounds++;
         }
 
+        // Inject generated image markdown into final content so the user always sees it,
+        // even when the LLM doesn't echo the image back in its response.
+        for (const tool of executedTools) {
+            if (tool.name === 'generate_image' && tool.result) {
+                try {
+                    const parsed = JSON.parse(tool.result);
+                    if (parsed.markdown && parsed.status === 'success') {
+                        fullContent = (fullContent ? fullContent + '\n\n' : '') + parsed.markdown;
+                    }
+                } catch (e) { /* tool result was not JSON — skip */ }
+            }
+        }
+
         // Final metadata + cost summary
         let estimatedCostUSD = null;
         if (usage) {
@@ -1064,7 +1377,7 @@ app.post('/api/ollama/chat', async (req, res) => {
             if (lastUserIdx !== -1) {
                 const lastUser = finalMessages[lastUserIdx];
                 const images = imageFiles.map(img => {
-                    const str = String(img.content || '');
+                    const str = String(getImageDataUrl(img));
                     const commaIdx = str.indexOf(',');
                     return commaIdx !== -1 ? str.slice(commaIdx + 1) : str;
                 });
@@ -1187,6 +1500,19 @@ app.post('/api/ollama/chat', async (req, res) => {
             toolRounds++;
         }
 
+        // Inject generated image markdown into final content so the user always sees it,
+        // even when the LLM doesn't echo the image back in its response.
+        for (const tool of executedTools) {
+            if (tool.name === 'generate_image' && tool.result) {
+                try {
+                    const parsed = JSON.parse(tool.result);
+                    if (parsed.markdown && parsed.status === 'success') {
+                        fullContent = (fullContent ? fullContent + '\n\n' : '') + parsed.markdown;
+                    }
+                } catch (e) { /* tool result was not JSON — skip */ }
+            }
+        }
+
         send('done', {
             content: fullContent,
             tokenUsage: (promptEvalCount || evalCount) ? {
@@ -1274,16 +1600,21 @@ if (fs.existsSync(distPath)) {
 }
 
 if (process.env.START_SERVER !== '0') {
-  const startServer = (portToTry) => {
+  const startServer = (portToTry, attempts = 0) => {
+    if (attempts > 20) {
+      console.error('Could not find available port after 20 attempts.');
+      return;
+    }
     const server = app.listen(portToTry, () => {
       console.log(`Dashboard server running on port ${portToTry}`);
     });
     server.on('error', (err) => {
-      if (err.code === 'EADDRINUSE' && !process.env.PORT) {
-        console.warn(`Port ${portToTry} is in use, trying port ${portToTry + 1}...`);
-        startServer(portToTry + 1);
+      if (err.code === 'EADDRINUSE' && attempts < 5) {
+        console.warn(`Port ${portToTry} busy, retrying in 500ms... (attempt ${attempts + 1})`);
+        setTimeout(() => startServer(portToTry, attempts + 1), 500);
       } else {
         console.error('Server failed to start:', err);
+        process.exit(1);
       }
     });
   };
