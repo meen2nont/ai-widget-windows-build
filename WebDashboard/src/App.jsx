@@ -1,14 +1,19 @@
 import { useState, useEffect, useRef } from 'react';
 import { 
   Settings, RefreshCw, CheckCircle2, XCircle, Activity,
-  MessageSquare, LayoutGrid, List, Copy, Send, Clock, ShieldCheck, Globe, Search,
+  MessageSquare, LayoutGrid, List, Copy, Send, Clock, Globe, Search,
   Plus, Trash2, Download, Link2, Pencil, RotateCcw, Paperclip, Wrench, FileText, X,
   Mic, MicOff, Volume2, VolumeX, BookOpen, DollarSign, ChevronDown, Table,
-  Bot, Code, PenLine, Languages, BarChart, Printer, Save, Mail, Brain, LogOut
+  Bot, Code, PenLine, Languages, BarChart, Printer, Mail, Brain, LogOut
 } from 'lucide-react';
 import { DeepSeekIcon, OllamaIcon, OllamaPayIcon } from './components/AIIcons';
 import { encryptAndSaveConfig, loadAndDecryptConfig } from './utils/crypto';
 import MarkdownMessage from './components/MarkdownMessage';
+import Dropdown from './components/Dropdown';
+import AuthScreen from './components/AuthScreen';
+import TemplatesModal from './components/TemplatesModal';
+import ConfirmDeleteModal from './components/ConfirmDeleteModal';
+import SettingsModal from './components/SettingsModal';
 import pkg from '../package.json';
 import './index.css';
 
@@ -58,96 +63,6 @@ function MetaBadges({ m }) {
         </div>
       )}
     </>
-  );
-}
-
-// Custom dropdown (consistent rendering across all browsers/OS)
-function Dropdown({ value, onChange, options, groups, label }) {
-  const [open, setOpen] = useState(false);
-  const [activeIndex, setActiveIndex] = useState(-1);
-
-  const flatten = () => {
-    if (groups) {
-      return groups.flatMap(g => g.options.map(o => ({ value: o.value, label: o.label, icon: o.icon, group: g.label })));
-    }
-    return options.map(o => ({ ...o, group: null }));
-  };
-  const items = flatten();
-  const current = items.find(i => i.value === value);
-
-  const pick = (item) => {
-    onChange(item.value);
-    setOpen(false);
-    setActiveIndex(-1);
-  };
-
-  const onKeyDown = (e) => {
-    if (!open) {
-      if (e.key === 'Enter' || e.key === ' ' || e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-        e.preventDefault();
-        setOpen(true);
-        setActiveIndex(Math.max(0, items.findIndex(i => i.value === value)));
-      }
-      return;
-    }
-    if (e.key === 'Escape') {
-      setOpen(false);
-      setActiveIndex(-1);
-    } else if (e.key === 'ArrowDown') {
-      e.preventDefault();
-      setActiveIndex(a => (a + 1) % items.length);
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault();
-      setActiveIndex(a => (a <= 0 ? items.length - 1 : a - 1));
-    } else if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault();
-      if (activeIndex >= 0) pick(items[activeIndex]);
-      else setOpen(false);
-    } else if (e.key === 'Tab') {
-      setOpen(false);
-      setActiveIndex(-1);
-    }
-  };
-
-  return (
-    <div className="custom-select" role="listbox" aria-label={label}>
-      <button
-        type="button"
-        className="custom-select-trigger"
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        onClick={() => setOpen(o => !o)}
-        onKeyDown={onKeyDown}
-      >
-        <span className="custom-select-value">{current.icon && <span className="custom-select-option-icon">{current.icon}</span>}{current ? current.label : label}</span>
-        <ChevronDown size={14} className={`custom-select-chevron ${open ? 'open' : ''}`} />
-      </button>
-      {open && (
-        <>
-          <div className="dropdown-backdrop" onClick={() => setOpen(false)} />
-          <div className="custom-select-panel" role="listbox" aria-label={label}>
-            {items.map((item, idx) => (
-              <span key={item.value}>
-                {item.group && (idx === 0 || items[idx - 1].group !== item.group) && (
-                  <div className="custom-select-group-label">{item.group}</div>
-                )}
-                <button
-                  type="button"
-                  role="option"
-                  aria-selected={item.value === value}
-                  className={`custom-select-item ${item.value === value ? 'selected' : ''} ${activeIndex === idx ? 'highlighted' : ''}`}
-                  onMouseEnter={() => setActiveIndex(idx)}
-                  onClick={() => pick(item)}
-                >
-                  {item.icon && <span className="custom-select-option-icon">{item.icon}</span>}
-                  {item.label}
-                </button>
-              </span>
-            ))}
-          </div>
-        </>
-      )}
-    </div>
   );
 }
 
@@ -1144,45 +1059,14 @@ function App() {
 
   if (authState === 'needs_setup' || authState === 'needs_login') {
     return (
-      <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-main)', color: 'var(--text-primary)', fontFamily: 'inherit' }}>
-        <div style={{ background: 'var(--panel-bg-solid)', padding: '2.5rem', borderRadius: 'var(--radius-lg)', border: '1px solid var(--panel-border)', boxShadow: '0 16px 32px rgba(0,0,0,0.5)', width: '100%', maxWidth: '420px', boxSizing: 'border-box' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.5rem', justifyContent: 'center' }}>
-            <ShieldCheck size={36} style={{ color: 'var(--accent-blue)' }} />
-            <h2 style={{ fontSize: '1.5rem', margin: 0, fontWeight: '600' }}>{authState === 'needs_setup' ? 'ตั้งรหัสผ่านระบบ' : 'เข้าสู่ระบบ'}</h2>
-          </div>
-          
-          {authState === 'needs_setup' && (
-            <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: '2rem', textAlign: 'center', lineHeight: '1.5' }}>
-              ระบบยังไม่มีรหัสผ่าน กรุณาตั้งรหัสผ่านสำหรับเข้าใช้งาน Dashboard (ตั้งครั้งเดียว)
-            </p>
-          )}
-
-          <form onSubmit={authState === 'needs_setup' ? handleSetup : handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-            <div>
-              <input 
-                type="password" 
-                value={authPassword}
-                onChange={(e) => setAuthPassword(e.target.value)}
-                placeholder="รหัสผ่าน"
-                style={{ width: '100%', background: 'var(--bg-main)', border: '1px solid var(--panel-border)', borderRadius: 'var(--radius-md)', padding: '0.85rem 1rem', color: 'var(--text-primary)', boxSizing: 'border-box', outline: 'none', fontSize: '1rem', transition: 'border-color 0.2s' }}
-                onFocus={(e) => e.target.style.borderColor = 'var(--accent-blue)'}
-                onBlur={(e) => e.target.style.borderColor = 'var(--panel-border)'}
-                autoFocus
-              />
-            </div>
-            
-            {authError && <p style={{ color: 'var(--status-red)', fontSize: '0.875rem', textAlign: 'center', margin: '0' }}>{authError}</p>}
-            
-            <button 
-              type="submit"
-              className="primary"
-              style={{ width: '100%', padding: '0.85rem', marginTop: '0.5rem', borderRadius: 'var(--radius-md)', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.5rem', fontWeight: 'bold', fontSize: '1rem' }}
-            >
-              {authState === 'needs_setup' ? 'ยืนยันรหัสผ่าน' : 'เข้าสู่ระบบ'}
-            </button>
-          </form>
-        </div>
-      </div>
+      <AuthScreen
+        authState={authState}
+        authPassword={authPassword}
+        setAuthPassword={setAuthPassword}
+        authError={authError}
+        handleSetup={handleSetup}
+        handleLogin={handleLogin}
+      />
     );
   }
 
@@ -2035,55 +1919,18 @@ function App() {
       )}
       {/* Feature 4: Prompt Templates Modal */}
       {showTemplates && (
-        <div className="templates-overlay" onClick={e => { if (e.target === e.currentTarget) setShowTemplates(false); }}
-        >
-          <div className="templates-card">
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.25rem' }}>
-              <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#a78bfa' }}>
-                <BookOpen size={20} /> Prompt Templates Library
-              </h3>
-              <button type="button" onClick={() => setShowTemplates(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex', padding: '0.25rem' }}>
-                <X size={20} />
-              </button>
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '0.75rem', marginBottom: '1.5rem' }}>
-              {templates.map(t => (
-                <div key={t.id} style={{ background: '#1c2128', border: '1px solid #30363d', borderRadius: '12px', padding: '1rem', cursor: 'pointer', transition: 'border-color 0.2s' }}
-                  onMouseEnter={e => e.currentTarget.style.borderColor = '#a78bfa'}
-                  onMouseLeave={e => e.currentTarget.style.borderColor = '#30363d'}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 600, fontSize: '0.85rem', marginBottom: '0.4rem', color: '#e6edf3' }}>
-                    {(() => { const TI = TEMPLATE_ICONS[t.id] || FileText; return <TI size={14} style={{ color: 'var(--status-purple)', flexShrink: 0 }} />; })()}
-                    <span>{t.name}</span>
-                  </div>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', marginBottom: '0.75rem', lineHeight: 1.4 }}>{t.prompt.substring(0, 120)}...</div>
-                  <div style={{ display: 'flex', gap: '0.5rem' }}>
-                    <button type="button" onClick={() => { setPromptInput(t.prompt); setShowTemplates(false); showToast('Template โหลดแล้ว'); }}
-                      style={{ flex: 1, padding: '0.35rem 0.6rem', fontSize: '0.78rem', background: 'rgba(167,139,250,0.12)', border: '1px solid rgba(167,139,250,0.3)', color: '#a78bfa', borderRadius: '8px', cursor: 'pointer' }}>
-                      ใช้งาน Template นี้
-                    </button>
-                    {!['t1','t2','t3','t4','t5','t6'].includes(t.id) && (
-                      <button type="button" onClick={() => deleteTemplate(t.id)}
-                        style={{ padding: '0.35rem 0.6rem', fontSize: '0.78rem', background: 'rgba(248,113,113,0.1)', border: '1px solid rgba(248,113,113,0.25)', color: '#f87171', borderRadius: '8px', cursor: 'pointer' }}>
-                        <Trash2 size={12} />
-                      </button>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-            <div style={{ borderTop: '1px solid #30363d', paddingTop: '1.25rem' }}>
-              <div style={{ fontSize: '0.85rem', fontWeight: 600, marginBottom: '0.75rem', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}><Plus size={14} /> บันทึก Template ใหม่</div>
-              <input type="text" placeholder="ชื่อ Template..." value={newTemplateName} onChange={e => setNewTemplateName(e.target.value)}
-                style={{ width: '100%', marginBottom: '0.6rem', padding: '0.55rem 0.75rem', background: '#0d1117', border: '1px solid #21262d', borderRadius: '8px', color: 'var(--text-primary)', fontSize: '0.85rem', boxSizing: 'border-box' }} />
-              <textarea rows={3} placeholder="เนื้อหา Prompt..." value={newTemplatePrompt} onChange={e => setNewTemplatePrompt(e.target.value)}
-                style={{ width: '100%', marginBottom: '0.75rem', padding: '0.55rem 0.75rem', background: '#0d1117', border: '1px solid #21262d', borderRadius: '8px', color: 'var(--text-primary)', fontSize: '0.85rem', resize: 'vertical', boxSizing: 'border-box' }} />
-              <button type="button" onClick={saveTemplate} className="primary" style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem' }}>
-                <Save size={14} /> บันทึก Template
-              </button>
-            </div>
-          </div>
-        </div>
+        <TemplatesModal
+          templates={templates}
+          setShowTemplates={setShowTemplates}
+          setPromptInput={setPromptInput}
+          showToast={showToast}
+          deleteTemplate={deleteTemplate}
+          newTemplateName={newTemplateName}
+          setNewTemplateName={setNewTemplateName}
+          newTemplatePrompt={newTemplatePrompt}
+          setNewTemplatePrompt={setNewTemplatePrompt}
+          saveTemplate={saveTemplate}
+        />
       )}
 
       {/* TAB 3: DETAILED METRICS TABLE */}
@@ -2154,279 +2001,39 @@ function App() {
       )}
 
       {/* Modal Settings */}
-      {showSettings && (
-        <div className="modal-overlay">
-          <div className="modal-card">
-            <h2 style={{ marginTop: 0, marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <Settings size={22} style={{ color: 'var(--accent-blue)' }} /> Dashboard Settings
-            </h2>
-
-            <div className="modal-tab-bar" style={{ display: 'flex', gap: '0.35rem', borderBottom: '1px solid var(--panel-border)', marginBottom: '1.25rem', overflowX: 'auto', paddingBottom: '0.5rem' }}>
-              <button 
-                type="button" 
-                onClick={() => setSettingsTab('general')} 
-                style={{ 
-                  flex: 1,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  textAlign: 'center',
-                  background: settingsTab === 'general' ? 'var(--accent-blue-bg)' : 'transparent', 
-                  border: '1px solid',
-                  borderColor: settingsTab === 'general' ? 'var(--accent-blue)' : 'transparent',
-                  borderRadius: 'var(--radius-sm)',
-                  color: settingsTab === 'general' ? 'var(--accent-blue)' : 'var(--text-secondary)', 
-                  padding: '0.45rem 0.5rem', 
-                  cursor: 'pointer', 
-                  fontSize: '0.82rem', 
-                  fontWeight: settingsTab === 'general' ? '600' : 'normal', 
-                  whiteSpace: 'nowrap',
-                  transition: 'all 0.15s ease'
-                }}
-              >
-                ทั่วไป
-              </button>
-              <button 
-                type="button" 
-                onClick={() => setSettingsTab('keys')} 
-                style={{ 
-                  flex: 1,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  textAlign: 'center',
-                  background: settingsTab === 'keys' ? 'var(--accent-blue-bg)' : 'transparent', 
-                  border: '1px solid',
-                  borderColor: settingsTab === 'keys' ? 'var(--accent-blue)' : 'transparent',
-                  borderRadius: 'var(--radius-sm)',
-                  color: settingsTab === 'keys' ? 'var(--accent-blue)' : 'var(--text-secondary)', 
-                  padding: '0.45rem 0.5rem', 
-                  cursor: 'pointer', 
-                  fontSize: '0.82rem', 
-                  fontWeight: settingsTab === 'keys' ? '600' : 'normal', 
-                  whiteSpace: 'nowrap',
-                  transition: 'all 0.15s ease'
-                }}
-              >
-                API Keys
-              </button>
-              <button 
-                type="button" 
-                onClick={() => setSettingsTab('memory')} 
-                style={{ 
-                  flex: 1,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  textAlign: 'center',
-                  background: settingsTab === 'memory' ? 'var(--accent-blue-bg)' : 'transparent', 
-                  border: '1px solid',
-                  borderColor: settingsTab === 'memory' ? 'var(--accent-blue)' : 'transparent',
-                  borderRadius: 'var(--radius-sm)',
-                  color: settingsTab === 'memory' ? 'var(--accent-blue)' : 'var(--text-secondary)', 
-                  padding: '0.45rem 0.5rem', 
-                  cursor: 'pointer', 
-                  fontSize: '0.82rem', 
-                  fontWeight: settingsTab === 'memory' ? '600' : 'normal', 
-                  whiteSpace: 'nowrap',
-                  transition: 'all 0.15s ease'
-                }}
-              >
-                ความจำ
-              </button>
-              <button 
-                type="button" 
-                onClick={() => setSettingsTab('security')} 
-                style={{ 
-                  flex: 1,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  textAlign: 'center',
-                  background: settingsTab === 'security' ? 'var(--accent-blue-bg)' : 'transparent', 
-                  border: '1px solid',
-                  borderColor: settingsTab === 'security' ? 'var(--accent-blue)' : 'transparent',
-                  borderRadius: 'var(--radius-sm)',
-                  color: settingsTab === 'security' ? 'var(--accent-blue)' : 'var(--text-secondary)', 
-                  padding: '0.45rem 0.5rem', 
-                  cursor: 'pointer', 
-                  fontSize: '0.82rem', 
-                  fontWeight: settingsTab === 'security' ? '600' : 'normal', 
-                  whiteSpace: 'nowrap',
-                  transition: 'all 0.15s ease'
-                }}
-              >
-                ความปลอดภัย
-              </button>
-            </div>
-
-            {settingsTab === 'security' && (
-              <div>
-                <h3 style={{ marginTop: '0', marginBottom: '1rem', borderBottom: '1px solid var(--panel-border)', paddingBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '1.05rem', color: 'var(--text-primary)' }}>
-                  <ShieldCheck size={18} style={{ color: 'var(--accent-blue)' }} /> เปลี่ยนรหัสผ่าน Dashboard
-                </h3>
-                <form onSubmit={handleChangePassword} style={{ marginBottom: '1.5rem' }}>
-                  <div className="form-group">
-                    <label>รหัสผ่านปัจจุบัน</label>
-                    <input 
-                      type="password" 
-                      value={currentPassword} 
-                      onChange={e => setCurrentPassword(e.target.value)} 
-                      placeholder="รหัสผ่านปัจจุบัน..."
-                    />
-                  </div>
-                  <div className="form-group" style={{ display: 'flex', gap: '1rem', alignItems: 'flex-end', flexWrap: 'wrap' }}>
-                    <div style={{ flex: 1, minWidth: '200px' }}>
-                      <label>รหัสผ่านใหม่</label>
-                      <input 
-                        type="password" 
-                        value={newPassword} 
-                        onChange={e => setNewPassword(e.target.value)} 
-                        placeholder="รหัสผ่านใหม่..."
-                      />
-                    </div>
-                    <button type="submit" className="primary" style={{ height: '42px', padding: '0 1.5rem' }}>
-                      เปลี่ยนรหัสผ่าน
-                    </button>
-                  </div>
-                </form>
-              </div>
-            )}
-
-            {settingsTab !== 'security' && (
-              <form onSubmit={handleSaveKeys}>
-                {settingsTab === 'keys' && (
-                  <div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1.5rem', padding: '0.5rem 0.85rem', background: 'rgba(35, 134, 54, 0.15)', border: '1px solid rgba(35, 134, 54, 0.3)', borderRadius: '8px', fontSize: '0.8rem', color: '#3fb950' }}>
-                      <ShieldCheck size={16} />
-                      <span>API Keys are saved securely to a JSON file on the server and synced with LocalStorage</span>
-                    </div>
-                    <div className="form-group">
-                      <label>DeepSeek API Key</label>
-                      <input type="password" value={keys.deepseek} onChange={e => setKeys({...keys, deepseek: e.target.value})} placeholder="sk-..." />
-                    </div>
-                    <div className="form-group">
-                      <label>Ollama Cloud API Key</label>
-                      <input type="password" value={keys.ollama} onChange={e => setKeys({...keys, ollama: e.target.value})} placeholder="Bearer token..." />
-                    </div>
-                    <div className="form-group">
-                      <label>Ollama Pay API Key</label>
-                      <input type="password" value={keys.ollamaPay} onChange={e => setKeys({...keys, ollamaPay: e.target.value})} placeholder="Bearer token..." />
-                    </div>
-                  </div>
-                )}
-
-                {settingsTab === 'general' && (
-                  <div>
-                    <div className="form-group">
-                      <label>Auto Refresh Interval</label>
-                      <Dropdown
-                        label="Auto Refresh Interval"
-                        value={refreshInterval}
-                        onChange={v => setRefreshInterval(Number(v))}
-                        options={[
-                          { value: 15, label: 'Every 15 seconds' },
-                          { value: 30, label: 'Every 30 seconds' },
-                          { value: 60, label: 'Every 1 minute (Recommended)' },
-                          { value: 300, label: 'Every 5 minutes' },
-                          { value: 0, label: 'Manual refresh only' },
-                        ]}
-                      />
-                    </div>
-                    <div className="form-group">
-                      <label>Embedding Model (ใช้ key Ollama)</label>
-                      <input type="text" value={keys.embedModel || 'nomic-embed-text'} onChange={e => setKeys({ ...keys, embedModel: e.target.value })} placeholder="nomic-embed-text" />
-                    </div>
-                  </div>
-                )}
-
-                {settingsTab === 'memory' && (
-                  <div>
-                    <div className="form-group">
-                      <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                        <Brain size={14} /> ระบบความจำ (Memory)
-                      </label>
-                      <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginTop: '0.4rem' }}>
-                        <button type="button" onClick={() => { const next = !useMemory; setUseMemory(next); localStorage.setItem('use_memory', next ? '1' : '0'); }} className={`toggle-chip ${useMemory ? 'on violet' : 'off'}`}>
-                          <Brain size={14} />
-                          <span>ความจำ: <strong>{useMemory ? 'เปิด' : 'ปิด'}</strong></span>
-                        </button>
-                        <button type="button" className="secondary" style={{ padding: '0.3rem 0.65rem', fontSize: '0.78rem' }} onClick={loadMemories} title="โหลดรายการความจำ">
-                          <RefreshCw size={13} /> โหลด
-                        </button>
-                      </div>
-                      <small style={{ color: 'var(--text-muted)', display: 'block', margin: '0.35rem 0' }}>
-                        ความจำ {memoryData.memories.length} รายการ · สรุปแชท {memoryData.summaries.length} รายการ
-                      </small>
-                      <input type="text" placeholder="เพิ่มความจำด้วยตัวเอง (เช่น ชื่อฉันคือ...)" value={newManualMemory} onChange={e => setNewManualMemory(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addManualMemory(); } }} />
-                    </div>
-
-                    {memoryData.memories.length > 0 && (
-                      <div className="memory-list" style={{ maxHeight: '180px', overflowY: 'auto', marginBottom: '0.5rem' }}>
-                        {memoryData.memories.map(mem => (
-                          <div key={mem.id} className="memory-list-item">
-                            <span className={`memory-kind-tag ${mem.kind}`}>{mem.kind === 'manual' ? 'ด้วยมือ' : 'อัตโนมัติ'}</span>
-                            <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={mem.content}>{mem.content}</span>
-                            <button type="button" className="action-icon-btn" onClick={() => deleteMemoryById(mem.id)} title="ลบความจำนี้">
-                              <Trash2 size={12} />
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-
-                    {memoryData.memories.length > 0 && (
-                      <div style={{ marginBottom: '0.75rem' }}>
-                        <button type="button" className="secondary" style={{ padding: '0.3rem 0.65rem', fontSize: '0.78rem', color: '#f85149', borderColor: 'rgba(248,113,113,0.3)' }} onClick={clearAllMemories}>
-                          <Trash2 size={13} /> ล้างความจำทั้งหมด
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end', marginTop: '2rem' }}>
-                  <button type="button" className="secondary" onClick={() => setShowSettings(false)}>
-                    Cancel
-                  </button>
-                  <button type="submit" className="primary">
-                    Save Settings
-                  </button>
-                </div>
-              </form>
-            )}
-
-            {settingsTab === 'security' && (
-              <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end', marginTop: '2rem' }}>
-                <button type="button" className="secondary" onClick={() => setShowSettings(false)}>
-                  Close
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+      <SettingsModal
+        showSettings={showSettings}
+        setShowSettings={setShowSettings}
+        settingsTab={settingsTab}
+        setSettingsTab={setSettingsTab}
+        keys={keys}
+        setKeys={setKeys}
+        refreshInterval={refreshInterval}
+        setRefreshInterval={setRefreshInterval}
+        useMemory={useMemory}
+        setUseMemory={setUseMemory}
+        memoryData={memoryData}
+        loadMemories={loadMemories}
+        newManualMemory={newManualMemory}
+        setNewManualMemory={setNewManualMemory}
+        addManualMemory={addManualMemory}
+        deleteMemoryById={deleteMemoryById}
+        clearAllMemories={clearAllMemories}
+        currentPassword={currentPassword}
+        setCurrentPassword={setCurrentPassword}
+        newPassword={newPassword}
+        setNewPassword={setNewPassword}
+        handleSaveKeys={handleSaveKeys}
+        handleChangePassword={handleChangePassword}
+      />
 
       {/* Confirm Delete Session */}
       {confirmDeleteSession && (
-        <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) setConfirmDeleteSession(false); }}>
-          <div className="modal-card" style={{ maxWidth: 'min(420px, 100%)', padding: 'clamp(1.1rem, 3vw, 1.5rem)' }}>
-            <h3 style={{ marginTop: 0, display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#f85149' }}>
-              <Trash2 size={18} /> ลบบทสนทนานี้?
-            </h3>
-            <p style={{ color: 'var(--text-secondary)', fontSize: '0.875rem', lineHeight: 1.5, marginBottom: '1.25rem' }}>
-              บทสนทนา “{currentSession.title}” และข้อความทั้งหมดจะถูกลบออกถาวร ข้อมูลนี้ไม่สามารถกู้คืนได้
-            </p>
-            <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
-              <button type="button" className="secondary" onClick={() => setConfirmDeleteSession(false)}>
-                ยกเลิก
-              </button>
-              <button type="button" className="primary" style={{ background: '#da3633' }} onClick={confirmDeleteSessionNow}>
-                <Trash2 size={14} /> ลบถาวร
-              </button>
-            </div>
-          </div>
-        </div>
+        <ConfirmDeleteModal
+          currentSession={currentSession}
+          setConfirmDeleteSession={setConfirmDeleteSession}
+          confirmDeleteSessionNow={confirmDeleteSessionNow}
+        />
       )}
 
       {/* Toast notification */}
