@@ -1286,7 +1286,7 @@ function App() {
       <div className="summary-banner">
         <div className="summary-card">
           <div className="summary-icon-box indigo">
-            <Activity />
+            <Activity size={18} />
           </div>
           <div>
             <div className="summary-label">Active Services</div>
@@ -1296,7 +1296,7 @@ function App() {
 
         <div className="summary-card">
           <div className="summary-icon-box emerald">
-            <DeepSeekIcon size={24} className="icon-green" />
+            <DeepSeekIcon size={20} className="icon-green" />
           </div>
           <div>
             <div className="summary-label">DeepSeek Balance</div>
@@ -1306,7 +1306,7 @@ function App() {
 
         <div className="summary-card">
           <div className="summary-icon-box cyan">
-            <OllamaIcon size={24} className="icon-blue" />
+            <OllamaIcon size={20} className="icon-blue" />
           </div>
           <div>
             <div className="summary-label">Ollama Session</div>
@@ -1316,7 +1316,7 @@ function App() {
 
         <div className="summary-card">
           <div className="summary-icon-box amber">
-            <OllamaPayIcon size={24} className="icon-amber" />
+            <OllamaPayIcon size={20} className="icon-amber" />
           </div>
           <div>
             <div className="summary-label">Ollama Pay Today</div>
@@ -1338,7 +1338,7 @@ function App() {
               <div className="glass-card overview-card">
                 <div className="card-header">
                   <div className="card-title-group">
-                    <DeepSeekIcon size={24} className="icon-indigo" />
+                    <DeepSeekIcon size={20} className="icon-indigo" />
                     <h2 className="card-title">DeepSeek AI</h2>
                   </div>
                   <div className="row-center">
@@ -1353,7 +1353,7 @@ function App() {
                 <div className="metric-row">
                   <div>
                     <div className="stat-label">Available Balance</div>
-                    <div className="metric-value-huge">${data.deepseek.balance} <span style={{fontSize: '1rem', color: 'var(--text-muted)'}}>{data.deepseek.currency}</span></div>
+                    <div className="metric-value-huge">${data.deepseek.balance} <span className="metric-unit">{data.deepseek.currency}</span></div>
                   </div>
                 </div>
 
@@ -1372,7 +1372,7 @@ function App() {
                   </div>
                 </div>
 
-                <div className="progress-container" style={{ marginTop: '1rem' }}>
+                <div className="progress-container">
                   <div className="progress-header">
                     <span>Credit Composition</span>
                     <span>
@@ -1399,7 +1399,7 @@ function App() {
               <div className="glass-card overview-card">
                 <div className="card-header">
                   <div className="card-title-group">
-                    <OllamaIcon size={24} className="icon-blue" />
+                    <OllamaIcon size={20} className="icon-blue" />
                     <h2 className="card-title">Ollama Cloud</h2>
                   </div>
                   <div className="row-center">
@@ -1455,7 +1455,7 @@ function App() {
               <div className="glass-card overview-card">
                 <div className="card-header">
                   <div className="card-title-group">
-                    <OllamaPayIcon size={24} className="icon-amber" />
+                    <OllamaPayIcon size={20} className="icon-amber" />
                     <h2 className="card-title">Ollama Pay</h2>
                   </div>
                   <div className="row-center">
@@ -1741,7 +1741,7 @@ function App() {
                       aria-label="ตั้งค่าโมเดลและเครื่องมือ"
                     >
                       <Settings size={14} />
-                      <span>ตั้งค่า</span>
+                      <span className="btn-label">ตั้งค่า</span>
                       <ChevronDown size={12} style={{ transform: showMobileChatSettings ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
                     </button>
 
@@ -1751,8 +1751,9 @@ function App() {
                         onClick={() => setExportOpen(o => !o)}
                         aria-expanded={exportOpen}
                         aria-haspopup="menu"
+                        title="ส่งออกบทสนทนา"
                       >
-                        <Download size={14} /> ส่งออก <ChevronDown size={12} />
+                        <Download size={14} /> <span className="btn-label">ส่งออก</span> <ChevronDown size={12} />
                       </button>
                       {exportOpen && (
                         <>
