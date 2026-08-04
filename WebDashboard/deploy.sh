@@ -12,9 +12,9 @@ rsync -avz --exclude 'node_modules' --exclude '.git' --exclude 'dist' ./ "$SERVE
 
 # SSH in and restart the docker container
 ssh "$SERVER" "cd $DEST_DIR && \
-  docker build -t ai-widget-dashboard . && \
   docker stop ai-widget-dashboard || true && \
   docker rm ai-widget-dashboard || true && \
-  docker run -d --name ai-widget-dashboard --restart unless-stopped -p 9000:9000 -v ai-widget-data:/app/data --env-file .env ai-widget-dashboard"
+  docker compose down || true && \
+  docker compose up -d --build"
 
 echo "Deployment complete! Dashboard should be running on http://192.168.1.252:9000"
